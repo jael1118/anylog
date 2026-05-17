@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "scheme": "acme",
+    "plugins": [
+      "expo-router"
+    ],
+    "name": "cafelog",
+    "slug": "cafelog",
+    "splash": {
+      "image": "./assets/icon.png", 
+      "resizeMode": "contain",
+      "backgroundColor": "#F8F8FC"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "3654fe74-ab71-4463-9834-f046e9e0c1eb"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/3654fe74-ab71-4463-9834-f046e9e0c1eb"
+    },
+    "requireFullScreen": true,
+    "android": {},
+    "ios": {}
+  }
+}
