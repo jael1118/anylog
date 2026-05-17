@@ -4,24 +4,24 @@
     "plugins": [
       "expo-router"
     ],
-    "name": "cafelog",
-    "slug": "cafelog",
+    "name": "anylog",
+    "slug": "anylog",
     "splash": {
-      "image": "./assets/icon.png", 
+      "image": "./assets/icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#F8F8FC"
     },
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "3654fe74-ab71-4463-9834-f046e9e0c1eb"
+        "projectId": "e687544f-2264-4962-8d6c-3b001daed54f"
       }
     },
     "runtimeVersion": {
       "policy": "appVersion"
     },
     "updates": {
-      "url": "https://u.expo.dev/3654fe74-ab71-4463-9834-f046e9e0c1eb"
+      "url": "https://u.expo.dev/e687544f-2264-4962-8d6c-3b001daed54f"
     },
     "requireFullScreen": true,
     "android": {},
