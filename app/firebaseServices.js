@@ -83,12 +83,14 @@ export const subscribeToUserSpaces = (userId, callback) => {
   return unsubscribe;
 };
 
-// ✅ 6. 修改：支援多圖網址陣列存入空間
-export const addRecordToSpace = async (spaceId, imageUrls) => {
+// ✅ 6. 支援多圖網址陣列與文字存入空間
+export const addRecordToSpace = async (spaceId, imageUrls, note, location) => {
   try {
     await addDoc(collection(db, "Records"), {
       spaceId: spaceId,
-      imageUrls: imageUrls, // 這裡改成存入陣列
+      imageUrls: imageUrls, 
+      note: note || "",
+      location: location || "",
       createdAt: Date.now()
     });
   } catch (error) {
@@ -97,38 +99,49 @@ export const addRecordToSpace = async (spaceId, imageUrls) => {
   }
 };
 
-// ✅ 7. GitHub 圖床上傳函數
-export const uploadImageToGitHub = async (base64String) => {
-  try {
-    // ⚠️ 請記得把這三個變數換成你的 GitHub 資訊！
-    const GITHUB_USERNAME = 'jael1118'; 
-    const GITHUB_REPO = 'appimg';      
-    const GITHUB_TOKEN = 'token'; 
+// ✅ 7. 升級版 GitHub 圖床上傳函數 (內建自動排隊防撞、防延遲重試機制)
+export const uploadImageToGitHub = async (base64String, maxRetries = 3) => {
+  const GITHUB_USERNAME = 'jael1118'; 
+  const GITHUB_REPO = 'appimg';      
+  const GITHUB_TOKEN = ''; 
 
-    const filename = `img_${Date.now()}.jpg`;
-    const url = `https://api.github.com/repos/${GITHUB_USERNAME}/${GITHUB_REPO}/contents/${filename}`;
+  // 把隨機亂碼確實組合進檔名
+  const randomStr = Math.random().toString(36).substring(2, 8);
+  const filename = `img_${Date.now()}_${randomStr}.jpg`;
+  const url = `https://api.github.com/repos/${GITHUB_USERNAME}/${GITHUB_REPO}/contents/${filename}`;
 
-    const response = await fetch(url, {
-      method: 'PUT',
-      headers: {
-        'Authorization': `Bearer ${GITHUB_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        message: `Upload image ${filename}`,
-        content: base64String, 
-      }),
-    });
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const response = await fetch(url, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${GITHUB_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: `Upload image ${filename}`,
+          content: base64String, 
+        }),
+      });
 
-    const data = await response.json();
+      const data = await response.json();
 
-    if (response.ok) {
-      return data.content.download_url;
-    } else {
+      if (response.ok) {
+        return data.content.download_url; // 成功就直接回傳網址
+      }
+
+      // 🚨 如果遇到 GitHub 經典的佇列同步延遲錯誤，進行等待並重試
+      if (data.message && data.message.includes('is at') && data.message.includes('expected')) {
+        console.log(`偵測到 GitHub 佇列延遲，將於 1.5 秒後進行第 ${i + 1} 次自動重試...`);
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        continue; // 進入下一次迴圈重試
+      }
+
       throw new Error(data.message);
+    } catch (error) {
+      // 如果是最後一次重試也失敗了，才真正拋出錯誤
+      if (i === maxRetries - 1) throw error;
+      await new Promise(resolve => setTimeout(resolve, 1500));
     }
-  } catch (error) {
-    console.error("GitHub 上傳失敗:", error);
-    throw error;
   }
 };
