@@ -31,7 +31,7 @@ export default function DetailScreen() {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
       
-      {/* 1. 頂部 Header (還原視覺圖：左側返回+資訊，右側笑臉) */}
+      {/* 1. 頂部 Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
@@ -41,7 +41,8 @@ export default function DetailScreen() {
             <Text style={styles.timeText}>{formatTime(record.createdAt)}</Text>
             <View style={styles.locationRow}>
               <Feather name="map-pin" size={10} color="#666" />
-              <Text style={styles.locationText}>環球影城</Text>
+              {/* ✅ 修改：改為動態讀取資料庫存入的地點文字 */}
+              <Text style={styles.locationText}>{record.location || "未知地點"}</Text>
             </View>
           </View>
         </View>
@@ -74,7 +75,7 @@ export default function DetailScreen() {
           )}
         </View>
 
-        {/* 3. 分頁圓點 (照視覺圖居中) */}
+        {/* 3. 分頁圓點 */}
         {images.length > 1 && (
           <View style={styles.dotsContainer}>
             {images.map((_, i) => (
@@ -89,7 +90,7 @@ export default function DetailScreen() {
         {/* 4. 文字內容區 */}
         <View style={styles.contentArea}>
           <Text style={styles.noteText}>
-            {record.note || "Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s."}
+            {record.note || "這筆紀錄沒有文字描述。"}
           </Text>
         </View>
       </ScrollView>
@@ -99,10 +100,10 @@ export default function DetailScreen() {
         <TouchableOpacity style={styles.navItem} onPress={() => router.replace('/')}>
           <Feather name="book" size={24} color="#333" />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem}>
+        <TouchableOpacity style={styles.navItem} onPress={() => router.replace('/map')}>
           <Feather name="map" size={24} color="#333" />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem}>
+        <TouchableOpacity style={styles.navItem} onPress={() => router.replace('/profile')}>
           <Feather name="user" size={24} color="#333" />
         </TouchableOpacity>
       </View>
@@ -114,7 +115,6 @@ export default function DetailScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF' },
   
-  // Header 樣式
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 15, paddingVertical: 10, backgroundColor: '#FFF' },
   headerLeft: { flexDirection: 'row', alignItems: 'center' },
   backBtn: { marginRight: 15 },
@@ -123,17 +123,14 @@ const styles = StyleSheet.create({
   locationRow: { flexDirection: 'row', alignItems: 'center' },
   locationText: { fontSize: 11, color: '#666', marginLeft: 4 },
 
-  // 圖片與圓點
   imageSection: { width: windowWidth, height: windowWidth * 1.1, backgroundColor: '#D9D9D9' },
   mainImage: { width: windowWidth, height: windowWidth * 1.1 },
   dotsContainer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 12, marginBottom: 15 },
   dot: { width: 6, height: 6, borderRadius: 3, marginHorizontal: 4 },
 
-  // 文字內容
   contentArea: { paddingHorizontal: 20 },
   noteText: { fontSize: 13, lineHeight: 20, color: '#333' },
 
-  // 底部導覽列
   floatingBottomNav: { position: 'absolute', bottom: 30, alignSelf: 'center', width: '85%', height: 60, backgroundColor: '#F5F5F5', borderRadius: 30, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 5 },
   navItem: { padding: 10 },
 });

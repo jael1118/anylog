@@ -84,13 +84,15 @@ export const subscribeToUserSpaces = (userId, callback) => {
 };
 
 // ✅ 6. 支援多圖網址陣列與文字存入空間
-export const addRecordToSpace = async (spaceId, imageUrls, note, location) => {
+export const addRecordToSpace = async (spaceId, imageUrls, note, location, latitude, longitude) => {
   try {
     await addDoc(collection(db, "Records"), {
       spaceId: spaceId,
       imageUrls: imageUrls, 
       note: note || "",
       location: location || "",
+      latitude: latitude !== undefined ? latitude : null,   // 儲存緯度
+      longitude: longitude !== undefined ? longitude : null, // 儲存經度
       createdAt: Date.now()
     });
   } catch (error) {
