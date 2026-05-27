@@ -1,6 +1,6 @@
 import { 
   collection, query, where, onSnapshot, doc, 
-  updateDoc, arrayUnion, addDoc, getDocs 
+  updateDoc, arrayUnion, addDoc, setDoc, getDocs, getDoc 
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
 
@@ -145,5 +145,45 @@ export const uploadImageToGitHub = async (base64String, maxRetries = 3) => {
       if (i === maxRetries - 1) throw error;
       await new Promise(resolve => setTimeout(resolve, 1500));
     }
+  }
+};
+
+// ✅ 8. 更新空間專屬背景圖
+export const updateSpaceBackground = async (spaceId, imageUrl) => {
+  try {
+    const spaceRef = doc(db, "Spaces", spaceId);
+    await updateDoc(spaceRef, {
+      backgroundImageUrl: imageUrl
+    });
+  } catch (error) {
+    console.error("更新背景圖失敗:", error);
+    throw error;
+  }
+};
+
+// ✅ 9. 取得使用者個人資料
+export const getUserProfile = async (userId) => {
+  try {
+    const docRef = doc(db, "Users", userId);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      return docSnap.data();
+    }
+    return null;
+  } catch (error) {
+    console.error("讀取使用者資料失敗:", error);
+    return null;
+  }
+};
+
+// ✅ 10. 更新使用者資料 (姓名、頭貼等)
+export const updateUserProfile = async (userId, data) => {
+  try {
+    const docRef = doc(db, "Users", userId);
+    // { merge: true } 可以確保只更新傳入的欄位，不會把其他資料洗掉
+    await setDoc(docRef, data, { merge: true });
+  } catch (error) {
+    console.error("更新使用者資料失敗:", error);
+    throw error;
   }
 };

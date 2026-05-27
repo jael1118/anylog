@@ -20,11 +20,42 @@ export default function DetailScreen() {
   // 確保圖片格式是陣列
   const images = record.imageUrls || (record.imageUrl ? [record.imageUrl] : []);
 
-  // 格式化時間 (例如: 今日13:10)
+  // ✅ 變聰明的時間格式化函數
   const formatTime = (ts) => {
     if (!ts) return '';
-    const d = new Date(ts);
-    return `今日${d.getHours()}:${d.getMinutes().toString().padStart(2, '0')}`;
+    
+    // 確保把傳進來的時間戳轉成數字 (防呆機制)
+    const parsedTs = !isNaN(Number(ts)) ? Number(ts) : ts;
+    const d = new Date(parsedTs);
+    const now = new Date();
+
+    // 判斷是否為今天
+    const isToday = d.getFullYear() === now.getFullYear() &&
+                    d.getMonth() === now.getMonth() &&
+                    d.getDate() === now.getDate();
+
+    // 判斷是否為昨天
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const isYesterday = d.getFullYear() === yesterday.getFullYear() &&
+                        d.getMonth() === yesterday.getMonth() &&
+                        d.getDate() === yesterday.getDate();
+
+    // 格式化時與分 (補零)
+    const hours = d.getHours().toString().padStart(2, '0');
+    const minutes = d.getMinutes().toString().padStart(2, '0');
+    const timeStr = `${hours}:${minutes}`;
+
+    if (isToday) {
+      return `今日 ${timeStr}`;
+    } else if (isYesterday) {
+      return `昨日 ${timeStr}`;
+    } else {
+      const yyyy = d.getFullYear();
+      const mm = (d.getMonth() + 1).toString().padStart(2, '0');
+      const dd = d.getDate().toString().padStart(2, '0');
+      return `${yyyy}.${mm}.${dd} ${timeStr}`;
+    }
   };
 
   return (
@@ -41,7 +72,6 @@ export default function DetailScreen() {
             <Text style={styles.timeText}>{formatTime(record.createdAt)}</Text>
             <View style={styles.locationRow}>
               <Feather name="map-pin" size={10} color="#666" />
-              {/* ✅ 修改：改為動態讀取資料庫存入的地點文字 */}
               <Text style={styles.locationText}>{record.location || "未知地點"}</Text>
             </View>
           </View>
