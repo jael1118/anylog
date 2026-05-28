@@ -233,14 +233,14 @@ export default function App() {
         
         {/* ✅ 1. 頂部深色漸層 (從 40% 黑，越往下越變透明，無硬邊線) */}
         <LinearGradient
-          colors={['rgba(0,0,0,0.5)', 'transparent']}
+          colors={['rgba(0,0,0,0.4)', 'transparent']}
           style={styles.topFaintGradient}
           pointerEvents="none"
         />
 
         {/* ✅ 2. 底部變淡漸層 (從透明，越往下變成跟貼文背景一樣的純白，讓圖片邊緣融化) */}
         <LinearGradient
-          colors={['transparent', 'rgba(255, 255, 255, 0.7)', '#FFFFFF']}
+          colors={['rgba(255,255,255,0)', 'rgba(255, 255, 255, 0.3)', '#FFFFFF']}
           style={styles.bottomFadeGradient}
           pointerEvents="none"
         />
@@ -314,7 +314,7 @@ export default function App() {
                   )}
                 </TouchableOpacity>
                 <TouchableOpacity 
-                  style={[styles.addFriendBtn, { zIndex: 1 }]} 
+                  style={[styles.addFriendBtn, { zIndex: 1 },memberProfiles.length === 0 && { marginLeft: 0 }]} 
                   onPress={() => {
                     if(currentSpace && currentSpace.inviteCode) {
                       setIsInviteCodeVisible(true);

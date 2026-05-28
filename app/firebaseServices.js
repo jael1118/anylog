@@ -1,6 +1,6 @@
 import { 
   collection, query, where, onSnapshot, doc, 
-  updateDoc, arrayUnion, addDoc, setDoc, getDocs, getDoc 
+  updateDoc, arrayUnion, addDoc, setDoc, getDocs, getDoc, deleteDoc 
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
 
@@ -184,6 +184,48 @@ export const updateUserProfile = async (userId, data) => {
     await setDoc(docRef, data, { merge: true });
   } catch (error) {
     console.error("更新使用者資料失敗:", error);
+    throw error;
+  }
+};
+
+// ✅ 新增：編輯/更新指定的紀錄
+export const updateRecordInSpace = async (spaceId, recordId, imageUrls, note, location, latitude, longitude) => {
+  try {
+    // 取得該筆紀錄的參考位置 (假設你的資料庫結構是 spaces -> 空間ID -> records -> 紀錄ID)
+    const recordRef = doc(db, 'Records', recordId);
+    
+    // 執行更新
+    await updateDoc(recordRef, {
+      imageUrls: imageUrls,
+      imageUrl: imageUrls.length > 0 ? imageUrls[0] : null, // 為了相容舊版單圖
+      note: note,
+      location: location,
+      latitude: latitude,
+      longitude: longitude,
+      updatedAt: Date.now(), // 紀錄最後修改時間
+    });
+    
+    console.log("紀錄更新成功！");
+    return true;
+  } catch (error) {
+    console.error("更新紀錄失敗: ", error);
+    throw error;
+  }
+};
+
+// ✅ 新增：刪除指定的紀錄
+export const deleteRecordFromSpace = async (spaceId, recordId) => {
+  try {
+    // 找到那筆紀錄的準確地址
+    const recordRef = doc(db, 'Records', recordId);
+    
+    // 呼叫 Firebase 的刪除指令
+    await deleteDoc(recordRef);
+    
+    console.log("紀錄刪除成功！");
+    return true;
+  } catch (error) {
+    console.error("刪除紀錄失敗: ", error);
     throw error;
   }
 };

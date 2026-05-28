@@ -6,6 +6,7 @@
     ],
     "name": "anylog",
     "slug": "anylog",
+    "owner": "anylog",
     "splash": {
       "image": "./assets/icon.png",
       "resizeMode": "contain",
@@ -14,14 +15,14 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "e687544f-2264-4962-8d6c-3b001daed54f"
+        "projectId": "e9572fde-c3da-4ebb-87d1-2f1c8a88d832"
       }
     },
     "runtimeVersion": {
       "policy": "appVersion"
     },
     "updates": {
-      "url": "https://u.expo.dev/e687544f-2264-4962-8d6c-3b001daed54f"
+      "url": "https://u.expo.dev/e9572fde-c3da-4ebb-87d1-2f1c8a88d832"
     },
     "requireFullScreen": true,
     "android": {},
