@@ -57,6 +57,19 @@ export const joinSpaceByCode = async (code, userId) => {
   }
 };
 
+// ✅ 新增：更新空間名稱
+export const updateSpaceName = async (spaceId, newName) => {
+  try {
+    const spaceRef = doc(db, 'Spaces', spaceId);
+    await updateDoc(spaceRef, { name: newName });
+    console.log("空間名稱更新成功！");
+    return true;
+  } catch (error) {
+    console.error("更新空間名稱失敗: ", error);
+    throw error;
+  }
+};
+
 // 4. 監聽空間紀錄
 export const subscribeToSpaceRecords = (spaceId, callback) => {
   const q = query(collection(db, "Records"), where("spaceId", "==", spaceId));

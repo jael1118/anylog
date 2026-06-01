@@ -4,7 +4,7 @@ import { getFirestore } from 'firebase/firestore';
 
 // 貼上你在 Firebase 控制台拿到的金鑰
 const firebaseConfig = {
-
+  
 };
 
 // 初始化 Firebase
