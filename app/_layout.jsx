@@ -8,7 +8,7 @@ export default function Layout() {
   const router = useRouter();
 
   // 設定「哪些頁面」需要顯示底部的懸浮導覽列
-  const showNavBarPages = ['/', '/map', '/profile'];
+  const showNavBarPages = ['/space', '/map', '/profile'];
   const showNavBar = showNavBarPages.includes(pathname);
 
   return (

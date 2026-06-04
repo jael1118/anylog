@@ -44,6 +44,8 @@ export default function App() {
   const [isEditNameModalVisible, setIsEditNameModalVisible] = useState(false);
   const [editSpaceName, setEditSpaceName] = useState('');
 
+  const [hasUnreadNotifications, setHasUnreadNotifications] = useState(false);
+
   const scrollY = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -135,7 +137,6 @@ export default function App() {
     setInputValue('');
   };
 
-  // ✅ 1. 拔除沒必要的權限詢問，直接跟 upload.js 一樣呼叫
   const handleSelectBackground = async () => {
     if (!currentSpace) return;
     
@@ -337,7 +338,7 @@ export default function App() {
               </TouchableOpacity>
               <TouchableOpacity style={styles.iconCircleBtn} onPress={() => {}}>
                 <Feather name="bell" size={18} color="#333" />
-                <View style={styles.notificationDot} />
+                {hasUnreadNotifications && <View style={styles.notificationDot} />}
               </TouchableOpacity>
               <TouchableOpacity style={styles.iconCircleBtn} onPress={() => setIsSettingsMenuVisible(true)}>
                 <Feather name="more-horizontal" size={18} color="#333" />
@@ -375,12 +376,8 @@ export default function App() {
         <Feather name="plus" size={30} color="white" />
       </TouchableOpacity>
 
-      {/* ==============================================================
-          ✅ 2. 拔除 Modal，改用絕對定位覆蓋的小選單！徹底解決相簿卡住的 Bug
-      ============================================================== */}
       {isSettingsMenuVisible && (
         <View style={[StyleSheet.absoluteFill, { zIndex: 999 }]}>
-          {/* 點擊透明背景關閉 */}
           <TouchableOpacity 
             style={{ flex: 1, backgroundColor: 'transparent' }} 
             activeOpacity={1} 
@@ -400,7 +397,6 @@ export default function App() {
 
             <TouchableOpacity style={styles.menuItem} onPress={() => { 
               setIsSettingsMenuVisible(false); 
-              // 直接呼叫相簿，保證秒開！
               handleSelectBackground(); 
             }}>
               <Feather name="image" size={18} color="#333" />
@@ -410,11 +406,9 @@ export default function App() {
         </View>
       )}
 
-      {/* ==============================================================
-          Modals  (這些保留為獨立視窗)
-      ============================================================== */}
+      {/* Modals */}
       <Modal visible={isEditNameModalVisible} transparent={true} animationType="fade">
-        <View style={styles.modalOverlay}> 
+        <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>更改空間名稱</Text>
             <TextInput style={styles.modalInput} placeholder="輸入新名稱..." placeholderTextColor="#CCC" value={editSpaceName} onChangeText={setEditSpaceName} autoFocus />
@@ -433,13 +427,17 @@ export default function App() {
       <Modal visible={isInviteCodeVisible} transparent={true} animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { alignItems: 'center' }]}>
-            <View style={[styles.modalHeader, { width: '100%', marginBottom: 10 }]}>
+            <View style={styles.modalHeader}>
               <View style={{ width: 24 }} />
-              <Text style={styles.modalTitle}>邀請朋友加入</Text>
-              <TouchableOpacity onPress={() => setIsInviteCodeVisible(false)}><Feather name="x" size={24} color="black" /></TouchableOpacity>
+              <Text style={[styles.modalTitle, { marginBottom: 0 }]}>邀請朋友加入</Text>
+              <TouchableOpacity onPress={() => setIsInviteCodeVisible(false)}>
+                <Feather name="x" size={24} color="black" />
+              </TouchableOpacity>
             </View>
             <Text style={styles.modalSubtitle}>代碼分享給您的朋友：</Text>
-            <View style={styles.inviteCodeBox}><Text style={styles.inviteCodeText}>{currentSpace?.inviteCode || '------'}</Text></View>
+            <View style={styles.inviteCodeBox}>
+              <Text style={styles.inviteCodeText}>{currentSpace?.inviteCode || '------'}</Text>
+            </View>
             <Text style={{ fontSize: 12, color: '#999', marginTop: 15 }}>朋友可於左上角輸入此代碼加入空間</Text>
           </View>
         </View>
@@ -449,8 +447,10 @@ export default function App() {
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { maxHeight: '60%' }]}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>空間成員 ({memberProfiles.length})</Text>
-              <TouchableOpacity onPress={() => setIsMembersModalVisible(false)}><Feather name="x" size={24} color="black" /></TouchableOpacity>
+              <Text style={[styles.modalTitle, { marginBottom: 0 }]}>空間成員 ({memberProfiles.length})</Text>
+              <TouchableOpacity onPress={() => setIsMembersModalVisible(false)}>
+                <Feather name="x" size={24} color="black" />
+              </TouchableOpacity>
             </View>
             <ScrollView showsVerticalScrollIndicator={false}>
               {memberProfiles.map((member, idx) => (
@@ -502,16 +502,21 @@ const styles = StyleSheet.create({
   multipleIcon: { position: 'absolute', top: 5, right: 5, backgroundColor: 'rgba(0,0,0,0.5)', padding: 4, borderRadius: 4 },
   emptyStateContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 100, backgroundColor: '#FFFFFF' },
   emptyStateText: { fontSize: 16, fontWeight: '600', color: '#BBB', marginTop: 15 },
-  fab: { position: 'absolute', bottom: 110, right: 20, width: 56, height: 56, borderRadius: 28, backgroundColor: '#7A7A7A', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 5, zIndex: 100 },
+  
+  // ✅ 修改：FAB 往上抬一點，避開導覽列
+  fab: { position: 'absolute', bottom: 100, right: 25, width: 56, height: 56, borderRadius: 28, backgroundColor: '#7A7A7A', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 5, zIndex: 90 },
 
-  // 選單樣式
   dropdownMenu: { position: 'absolute', top: Platform.OS === 'ios' ? 100 : 80, right: 15, width: 140, backgroundColor: '#FFF', borderRadius: 12, paddingVertical: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 10, elevation: 8 },
   menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16 },
   menuItemText: { fontSize: 15, fontWeight: '500', color: '#333', marginLeft: 12 },
   menuDivider: { height: 1, backgroundColor: '#F0F0F0', marginHorizontal: 16 },
 
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
-  modalContent: { width: '80%', backgroundColor: '#FFF', borderRadius: 20, padding: 25, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 20, elevation: 10 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+  modalContent: { width: '85%', backgroundColor: 'white', borderRadius: 15, padding: 20 },
+  
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 20 },
+  modalSubtitle: { fontSize: 14, color: '#666', marginBottom: 15, textAlign: 'center' },
+  
   modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: 15, textAlign: 'center' },
   modalInput: { backgroundColor: '#F5F5F5', borderRadius: 10, paddingHorizontal: 15, paddingVertical: 12, fontSize: 16, marginBottom: 20, color: '#333' },
   modalBtnRow: { flexDirection: 'row', justifyContent: 'space-between' },
@@ -519,7 +524,9 @@ const styles = StyleSheet.create({
   modalCancelText: { fontSize: 16, color: '#666', fontWeight: '600' },
   modalConfirmBtn: { flex: 1, paddingVertical: 12, alignItems: 'center', marginLeft: 10, borderRadius: 10, backgroundColor: '#333' },
   modalConfirmText: { fontSize: 16, color: '#FFF', fontWeight: '600' },
-
+  joinBtn: { backgroundColor: '#CCCCCC', padding: 15, borderRadius: 8, alignItems: 'center', marginTop: 10 },
+  joinBtnActive: { backgroundColor: '#333333' },
+  joinBtnText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
   inviteCodeBox: { backgroundColor: '#F5F5F5', paddingHorizontal: 30, paddingVertical: 15, borderRadius: 10, borderWidth: 2, borderColor: '#E0E0E0', borderStyle: 'dashed' },
   inviteCodeText: { fontSize: 32, fontWeight: '900', letterSpacing: 5, color: '#333' },
   memberListItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },

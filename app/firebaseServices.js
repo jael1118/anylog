@@ -1,5 +1,5 @@
 import { 
-  collection, query, where, onSnapshot, doc, 
+  collection, query, where, onSnapshot, doc, orderBy,
   updateDoc, arrayUnion, addDoc, setDoc, getDocs, getDoc, deleteDoc 
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
@@ -241,4 +241,40 @@ export const deleteRecordFromSpace = async (spaceId, recordId) => {
     console.error("刪除紀錄失敗: ", error);
     throw error;
   }
+};
+
+// ✅ 新增：把留言寫入特定紀錄的資料庫中
+// ==========================================
+export const addCommentToRecord = async (spaceId, recordId, userId, userName, text) => {
+  try {
+    // 建立路徑：spaces -> 空間ID -> records -> 紀錄ID -> comments
+    const commentsRef = collection(db, 'spaces', spaceId, 'records', recordId, 'comments');
+    await addDoc(commentsRef, {
+      userId: userId,
+      userName: userName,
+      text: text,
+      createdAt: Date.now(),
+    });
+    return true;
+  } catch (error) {
+    console.error("資料庫新增留言失敗: ", error);
+    throw error;
+  }
+};
+
+// ==========================================
+// ✅ 新增：實時訂閱該紀錄的留言（有人留完言畫面立刻跳出來）
+// ==========================================
+export const subscribeToComments = (spaceId, recordId, callback) => {
+  const commentsRef = collection(db, 'spaces', spaceId, 'records', recordId, 'comments');
+  // 依時間正序排列（最早的在上面，最新的在最底下，符合聊天/留言直覺）
+  const q = query(commentsRef, orderBy('createdAt', 'asc')); 
+  
+  return onSnapshot(q, (snapshot) => {
+    const fetchedComments = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    callback(fetchedComments);
+  });
 };

@@ -1,29 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { 
   StyleSheet, Text, View, SafeAreaView, TouchableOpacity, 
-  FlatList, StatusBar, Modal, TextInput, Alert, Image 
+  FlatList, StatusBar, Modal, TextInput, Alert, Image,
+  TouchableWithoutFeedback, Keyboard // ✅ 引入這兩個來處理鍵盤收起
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// ✅ 記得補上 getUserProfile
-import { subscribeToUserSpaces, createNewSpace, getUserProfile } from './firebaseServices'; 
+import { subscribeToUserSpaces, createNewSpace, getUserProfile, joinSpaceByCode } from './firebaseServices'; 
 
 export default function SpaceListScreen() {
   const router = useRouter();
   
   const [myUserId, setMyUserId] = useState(null);
   const [spaces, setSpaces] = useState([]);
-  
-  // ✅ 新增：用來暫存所有成員大頭貼的字典 (例如 { 'user_1': 'http...', 'user_2': null })
   const [memberProfiles, setMemberProfiles] = useState({});
   
+  // ✅ 改回三種狀態：'options' (選單), 'create' (建立), 'join' (加入)
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
-  const [newSpaceName, setNewSpaceName] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
+  const [modalMode, setModalMode] = useState('options'); 
+  const [inputValue, setInputValue] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  // 初始化拿 UserId
   useEffect(() => {
     const initialize = async () => {
       let storedId = await AsyncStorage.getItem('@my_device_user_id');
@@ -36,7 +35,6 @@ export default function SpaceListScreen() {
     initialize();
   }, []);
 
-  // 訂閱空間列表
   useEffect(() => {
     if (!myUserId) return;
     const unsubscribe = subscribeToUserSpaces(myUserId, (fetchedSpaces) => {
@@ -45,7 +43,6 @@ export default function SpaceListScreen() {
     return () => unsubscribe();
   }, [myUserId]);
 
-  // ✅ 新增：當空間列表更新時，自動去抓取所有成員的大頭貼
   useEffect(() => {
     const fetchAvatars = async () => {
       if (spaces.length === 0) return;
@@ -53,13 +50,11 @@ export default function SpaceListScreen() {
       const newProfiles = { ...memberProfiles };
       let hasNew = false;
       
-      // 收集畫面上所有空間裡的所有成員 ID
       const allMemberIds = new Set();
       spaces.forEach(space => {
         if (space.members) space.members.forEach(id => allMemberIds.add(id));
       });
 
-      // 針對每一個成員，如果還沒抓過他的資料，就去 Firebase 抓
       for (const id of allMemberIds) {
         if (newProfiles[id] === undefined) {
           try {
@@ -72,33 +67,41 @@ export default function SpaceListScreen() {
         }
       }
 
-      // 如果有抓到新的大頭貼，就更新畫面
       if (hasNew) setMemberProfiles(newProfiles);
     };
 
     fetchAvatars();
   }, [spaces]);
 
-  const handleCreateSpace = async () => {
-    if (!newSpaceName.trim()) {
-      Alert.alert("提示", "請輸入空間名稱！");
+  const handleConfirmAction = async () => {
+    if (!inputValue.trim()) {
+      Alert.alert("提示", modalMode === 'create' ? "請輸入空間名稱！" : "請輸入邀請碼！");
       return;
     }
-    setIsCreating(true);
+    
+    setIsProcessing(true);
     try {
-      await createNewSpace(newSpaceName, myUserId);
+      if (modalMode === 'create') {
+        const result = await createNewSpace(inputValue, myUserId);
+        if (result) {
+          Alert.alert("建立成功", `快把邀請碼 ${result.inviteCode} 分享給朋友吧！`);
+        }
+      } else {
+        const result = await joinSpaceByCode(inputValue, myUserId);
+        if (result) {
+          Alert.alert("加入成功", `已成功加入 ${result.name}！`);
+        }
+      }
       setIsAddModalVisible(false);
-      setNewSpaceName('');
+      setInputValue('');
     } catch (error) {
-      Alert.alert("錯誤", "建立空間失敗");
+      Alert.alert("錯誤", modalMode === 'create' ? "建立空間失敗" : "加入空間失敗，請確認邀請碼是否正確。");
     } finally {
-      setIsCreating(false);
+      setIsProcessing(false);
     }
   };
 
   const renderSpaceCard = ({ item }) => {
-    // 空間背景
-    const coverUrl = item.backgroundImageUrl || 'https://images.unsplash.com/photo-1497366216548-37526070297c?q=80&w=200&auto=format&fit=crop'; 
     const membersList = Array.isArray(item.members) && item.members.length > 0 ? item.members : [myUserId];
 
     return (
@@ -113,7 +116,6 @@ export default function SpaceListScreen() {
         }}
       >
         <View style={styles.cardLeft}>
-          
           <View style={[styles.cardImagePlaceholder, !item.backgroundImageUrl && { backgroundColor: '#EBEBEB' }]}>
             {item.backgroundImageUrl && (
               <Image source={{ uri: item.backgroundImageUrl }} style={styles.cardBgImage} resizeMode="cover" />
@@ -125,12 +127,10 @@ export default function SpaceListScreen() {
           
           <View style={styles.avatarGroup}>
             {membersList.slice(0, 3).map((memberId, index) => {
-              // ✅ 從我們剛才抓下來的字典裡，尋找這個人的大頭貼網址
               const avatarUrl = memberProfiles[memberId];
 
               return (
                 <View key={index} style={[styles.avatarWrapper, index > 0 && { marginLeft: 8 }]}>
-                  {/* 有網址就顯示圖片，沒網址就顯示灰色預設 Icon */}
                   {avatarUrl ? (
                     <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
                   ) : (
@@ -146,9 +146,7 @@ export default function SpaceListScreen() {
                </View>
             )}
           </View>
-          
         </View>
-        
         <Feather name="chevron-right" size={20} color="#333" />
       </TouchableOpacity>
     );
@@ -160,7 +158,14 @@ export default function SpaceListScreen() {
       
       <View style={styles.header}>
         <Text style={styles.headerTitle}>空間列表</Text>
-        <TouchableOpacity style={styles.addSpaceBtn} onPress={() => setIsAddModalVisible(true)}>
+        <TouchableOpacity 
+          style={styles.addSpaceBtn} 
+          onPress={() => {
+            setModalMode('options'); // 點擊新增，先回到選項模式
+            setInputValue('');
+            setIsAddModalVisible(true);
+          }}
+        >
           <Feather name="plus" size={14} color="#333" />
           <Text style={styles.addSpaceBtnText}>新增空間</Text>
         </TouchableOpacity>
@@ -179,12 +184,8 @@ export default function SpaceListScreen() {
         }
       />
 
-      <TouchableOpacity 
-        style={styles.fab} 
-        activeOpacity={0.8}
-        onPress={() => router.push('/upload')} 
-      >
-        <Feather name="plus" size={28} color="#FFF" />
+      <TouchableOpacity style={styles.fab} activeOpacity={0.8} onPress={() => router.push('/upload')}>
+        <Feather name="plus" size={30} color="#FFF" />
       </TouchableOpacity>
 
       <View style={styles.bottomNavContainer}>
@@ -201,28 +202,86 @@ export default function SpaceListScreen() {
         </View>
       </View>
 
+      {/* ✅ 兩階段式 Modal，加上點擊空白處收起鍵盤功能 */}
       <Modal visible={isAddModalVisible} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>建立新空間</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="給這個空間取個名字吧..."
-              placeholderTextColor="#999"
-              value={newSpaceName}
-              onChangeText={setNewSpaceName}
-              autoFocus
-            />
-            <View style={styles.modalBtnRow}>
-              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setIsAddModalVisible(false)}>
-                <Text style={styles.modalCancelText}>取消</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.modalConfirmBtn} onPress={handleCreateSpace} disabled={isCreating}>
-                <Text style={styles.modalConfirmText}>{isCreating ? "建立中..." : "建立"}</Text>
-              </TouchableOpacity>
+        <TouchableOpacity 
+          style={styles.modalOverlay} 
+          activeOpacity={1} 
+          onPress={() => {
+            Keyboard.dismiss(); // 點擊半透明背景也能收鍵盤
+            setIsAddModalVisible(false);
+          }}
+        >
+          {/* ✅ 用 TouchableWithoutFeedback 包住內容，點擊白色區塊的空白處會收鍵盤，但不會關閉視窗 */}
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <View style={styles.modalContent}>
+              
+              {modalMode === 'options' ? (
+                // 🔹 第一階段：選單模式
+                <View>
+                  <View style={styles.modalHeader}>
+                    {/* 左邊留個空 View 讓標題置中 */}
+                    <View style={{ width: 24 }} /> 
+                    <Text style={[styles.modalTitle, { marginBottom: 0 }]}>新增或加入</Text>
+                    <TouchableOpacity onPress={() => setIsAddModalVisible(false)}>
+                      <Feather name="x" size={24} color="black" />
+                    </TouchableOpacity>
+                  </View>
+
+                  <TouchableOpacity style={styles.optionBtn} onPress={() => setModalMode('create')}>
+                    <Feather name="plus-circle" size={20} color="#333" />
+                    <Text style={styles.optionBtnText}>建立新空間</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={styles.optionBtn} onPress={() => setModalMode('join')}>
+                    <Feather name="log-in" size={20} color="#333" />
+                    <Text style={styles.optionBtnText}>輸入邀請碼加入</Text>
+                  </TouchableOpacity>
+                </View>
+
+              ) : (
+                // 🔹 第二階段：輸入模式 (建立 or 加入)
+                <View>
+                  <View style={styles.modalHeader}>
+                    <TouchableOpacity onPress={() => setModalMode('options')}>
+                      <Feather name="arrow-left" size={24} color="black" />
+                    </TouchableOpacity>
+                    <Text style={[styles.modalTitle, { marginBottom: 0 }]}>
+                      {modalMode === 'create' ? '建立新空間' : '加入空間'}
+                    </Text>
+                    <TouchableOpacity onPress={() => setIsAddModalVisible(false)}>
+                      <Feather name="x" size={24} color="black" />
+                    </TouchableOpacity>
+                  </View>
+
+                  <Text style={styles.modalSubtitle}>
+                    {modalMode === 'create' ? '為空間取個名字' : '請輸入邀請碼'}
+                  </Text>
+
+                  <TextInput
+                    style={styles.modalInput}
+                    placeholder={modalMode === 'create' ? "輸入名稱..." : "例如: A7X9WQ"}
+                    placeholderTextColor="#CCC"
+                    value={inputValue}
+                    onChangeText={setInputValue}
+                    autoCapitalize={modalMode === 'join' ? "characters" : "none"}
+                    maxLength={modalMode === 'join' ? 6 : 20}
+                    autoFocus
+                  />
+
+                  <TouchableOpacity 
+                    style={[styles.joinBtn, inputValue.trim().length > 0 ? styles.joinBtnActive : null]} 
+                    disabled={inputValue.trim().length === 0 || isProcessing || (modalMode === 'join' && inputValue.length !== 6)}
+                    onPress={handleConfirmAction}
+                  >
+                    <Text style={styles.joinBtnText}>{isProcessing ? "處理中..." : "確認"}</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
             </View>
-          </View>
-        </View>
+          </TouchableWithoutFeedback>
+        </TouchableOpacity>
       </Modal>
 
     </SafeAreaView>
@@ -249,7 +308,6 @@ const styles = StyleSheet.create({
   
   avatarGroup: { flexDirection: 'row', alignItems: 'center', marginLeft: 15 },
   avatarWrapper: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#CCC', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
-  // ✅ 補回 avatarImage 樣式，確保圖片填滿
   avatarImage: { width: '100%', height: '100%' },
   
   emptyState: { alignItems: 'center', marginTop: 50 },
@@ -264,11 +322,18 @@ const styles = StyleSheet.create({
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
   modalContent: { width: '80%', backgroundColor: '#FFF', borderRadius: 20, padding: 25, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 20, elevation: 10 },
-  modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: 15, textAlign: 'center' },
+  
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#333' },
+  modalSubtitle: { fontSize: 14, color: '#666', marginBottom: 15, textAlign: 'center' },
+  
+  // ✅ 恢復按鈕樣式
+  optionBtn: { flexDirection: 'row', alignItems: 'center', padding: 15, borderWidth: 1, borderColor: '#EEEEEE', borderRadius: 10, marginBottom: 10, backgroundColor: '#FAFAFA' },
+  optionBtnText: { fontSize: 16, fontWeight: '600', marginLeft: 12, color: '#333' },
+
   modalInput: { backgroundColor: '#F5F5F5', borderRadius: 10, paddingHorizontal: 15, paddingVertical: 12, fontSize: 16, marginBottom: 20, color: '#333' },
-  modalBtnRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  modalCancelBtn: { flex: 1, paddingVertical: 12, alignItems: 'center', marginRight: 10, borderRadius: 10, backgroundColor: '#F0F0F0' },
-  modalCancelText: { fontSize: 16, color: '#666', fontWeight: '600' },
-  modalConfirmBtn: { flex: 1, paddingVertical: 12, alignItems: 'center', marginLeft: 10, borderRadius: 10, backgroundColor: '#333' },
-  modalConfirmText: { fontSize: 16, color: '#FFF', fontWeight: '600' }
+  
+  joinBtn: { backgroundColor: '#CCCCCC', padding: 15, borderRadius: 10, alignItems: 'center', marginTop: 5 },
+  joinBtnActive: { backgroundColor: '#333333' },
+  joinBtnText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
 });
