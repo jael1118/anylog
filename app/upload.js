@@ -12,7 +12,7 @@ import MapView from 'react-native-maps';
 import * as Location from 'expo-location'; 
 
 import { 
-  subscribeToUserSpaces, addRecordToSpace, uploadImageToGitHub,
+  subscribeToUserSpaces, addRecordToSpace, uploadImageToGitHub, sendNotificationToMembers,
   updateRecordInSpace // ✅ 確保你的 firebaseServices 有提供或可呼叫更新特性的方法
 } from './firebaseServices'; 
 
@@ -245,6 +245,21 @@ export default function UploadScreen() {
       Alert.alert("成功", editRecord ? "紀錄已更新！" : "紀錄已發佈！", [
         { text: "OK", onPress: () => router.back() } 
       ]);
+      // 假設你已經成功上傳了 record，並拿到了 currentSpace (當前空間的資訊)
+// 在成功 Alert 或 router.back() 之前，加上這段：
+
+if (currentSpace && currentSpace.members && currentSpace.members.length > 0) {
+  await sendNotificationToMembers(
+    currentSpace.members, // 發給空間裡的所有人
+    myUserId,             // 扣除自己
+    {
+      userName: myProfile?.name || '神祕成員',
+      userAvatar: myProfile?.avatarUrl || null,
+      spaceName: currentSpace.name,
+      action: '上傳了一篇新紀錄' // 這裡是動作描述
+    }
+  );
+}
     } catch (error) {
       console.error(error);
       Alert.alert("失敗", `操作失敗：\n${error.message}`);

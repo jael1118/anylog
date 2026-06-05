@@ -8,7 +8,7 @@ import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { subscribeToUserSpaces, createNewSpace, getUserProfile, joinSpaceByCode } from './firebaseServices'; 
+import { subscribeToUserSpaces, createNewSpace, getUserProfile, joinSpaceByCode, subscribeToMyNotifications } from './firebaseServices'; 
 
 export default function SpaceListScreen() {
   const router = useRouter();
@@ -22,7 +22,20 @@ export default function SpaceListScreen() {
   const [modalMode, setModalMode] = useState('options'); 
   const [inputValue, setInputValue] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [hasUnreadNotifications, setHasUnreadNotifications] = useState(false);
 
+  useEffect(() => {
+    if (!myUserId) return;
+    
+    const unsubscribe = subscribeToMyNotifications(myUserId, (notifs) => {
+      // 檢查有沒有任何一筆是未讀的 (isRead === false)
+      const hasUnread = notifs.some(n => n.isRead === false);
+      setHasUnreadNotifications(hasUnread);
+    });
+    
+    return () => unsubscribe();
+  }, [myUserId]);
+  
   useEffect(() => {
     const initialize = async () => {
       let storedId = await AsyncStorage.getItem('@my_device_user_id');
@@ -157,6 +170,7 @@ export default function SpaceListScreen() {
       <StatusBar barStyle="dark-content" backgroundColor="#FAFAFA" />
       
       <View style={styles.header}>
+        <View style={styles.headerLeft}>
         <Text style={styles.headerTitle}>空間列表</Text>
         <TouchableOpacity 
           style={styles.addSpaceBtn} 
@@ -169,7 +183,15 @@ export default function SpaceListScreen() {
           <Feather name="plus" size={14} color="#333" />
           <Text style={styles.addSpaceBtnText}>新增空間</Text>
         </TouchableOpacity>
+        </View>
+        <View style={styles.headerRight}>
+                      <TouchableOpacity style={styles.iconCircleBtn} onPress={() => router.push('/notifications')}>
+                                <Feather name="bell" size={18} color="#333" />
+                              </TouchableOpacity>
+                  </View>
       </View>
+
+      
 
       <FlatList
         data={spaces}
@@ -188,19 +210,6 @@ export default function SpaceListScreen() {
         <Feather name="plus" size={30} color="#FFF" />
       </TouchableOpacity>
 
-      <View style={styles.bottomNavContainer}>
-        <View style={styles.floatingBottomNav}>
-          <TouchableOpacity style={[styles.navItem, styles.navItemActive]}>
-            <Feather name="book" size={22} color="#333" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.navItem} onPress={() => router.replace('/map')}>
-            <Feather name="map" size={22} color="#333" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.navItem} onPress={() => router.replace('/profile')}>
-            <Feather name="user" size={22} color="#333" />
-          </TouchableOpacity>
-        </View>
-      </View>
 
       {/* ✅ 兩階段式 Modal，加上點擊空白處收起鍵盤功能 */}
       <Modal visible={isAddModalVisible} transparent animationType="fade">
@@ -277,6 +286,7 @@ export default function SpaceListScreen() {
                     <Text style={styles.joinBtnText}>{isProcessing ? "處理中..." : "確認"}</Text>
                   </TouchableOpacity>
                 </View>
+                
               )}
 
             </View>
@@ -291,11 +301,14 @@ export default function SpaceListScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FAFAFA' },
   
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 15 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent:'space-between', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 15 },
   headerTitle: { fontSize: 22, fontWeight: 'bold', color: '#111', marginRight: 15 },
   addSpaceBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#E5E5EA', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 15 },
   addSpaceBtnText: { fontSize: 13, fontWeight: '600', color: '#333', marginLeft: 4 },
 
+  headerLeft: { flexDirection: 'row', alignItems: 'center' },
+  headerRight: { flexDirection: 'row' },
+  iconCircleBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.85)', justifyContent: 'center', alignItems: 'center', marginLeft: 10 },
   listContainer: { paddingHorizontal: 20, paddingBottom: 100 },
   
   spaceCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#FFF', borderRadius: 16, padding: 12, marginBottom: 15, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 3 },

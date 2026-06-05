@@ -10,7 +10,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ✅ 引入剛剛寫好的留言串接服務
 import { 
-  deleteRecordFromSpace, addCommentToRecord, subscribeToComments, getUserProfile 
+  deleteRecordFromSpace, addCommentToRecord, subscribeToComments, getUserProfile, sendNotificationToMembers, getSpaceData 
 } from './firebaseServices';
 
 const windowWidth = Dimensions.get('window').width;
@@ -165,11 +165,12 @@ export default function DetailScreen() {
   };
 
   // ✅ 處理送出留言（正式寫入 Firebase）
+  // ✅ 處理送出留言（正式寫入 Firebase + 正確發送通知）
   const handleSendComment = async () => {
     if (!commentText.trim() || !myUserId) return;
     
     try {
-      // 呼叫 API 寫入 Firebase
+      // 1. 成功寫入留言到資料庫
       await addCommentToRecord(
         record.spaceId, 
         record.id, 
@@ -177,8 +178,28 @@ export default function DetailScreen() {
         myProfile?.name || '神祕成員', 
         commentText.trim()
       );
+
+      // 2. 正確去資料庫拿「這個空間的成員名單」
+      const spaceData = await getSpaceData(record.spaceId);
+
+      // 3. 如果有拿到成員名單，就發送通知
+      if (spaceData && spaceData.members && spaceData.members.length > 0) {
+        await sendNotificationToMembers(
+          spaceData.members, // 傳入正確的成員陣列
+          myUserId,          // 自己不要收到自己的通知
+          {
+            userName: myProfile?.name || '神祕成員',
+            userAvatar: myProfile?.avatarUrl || null,
+            spaceName: spaceData.name || '空間',
+            action: '新增了一則留言',
+            recordData: JSON.stringify(record)
+          }
+        );
+      }
+
       setCommentText(''); // 成功後清空輸入框
     } catch (e) {
+      console.error("留言發生錯誤:", e); // 如果還出錯，這裡會印出真正的原因
       Alert.alert("提示", "留言發送失敗，請稍後再試。");
     }
   };
@@ -319,18 +340,6 @@ export default function DetailScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      <View style={styles.floatingBottomNav}>
-        <TouchableOpacity style={styles.navItem} onPress={() => router.replace('/')}>
-          <Feather name="book" size={24} color="#333" />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem} onPress={() => router.replace('/map')}>
-          <Feather name="map" size={24} color="#333" />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem} onPress={() => router.replace('/profile')}>
-          <Feather name="user" size={24} color="#333" />
-        </TouchableOpacity>
-      </View>
-
       <Modal visible={isMenuVisible} transparent={true} animationType="fade">
         <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setIsMenuVisible(false)}>
           <SafeAreaView>
@@ -374,8 +383,6 @@ const styles = StyleSheet.create({
   dot: { width: 6, height: 6, borderRadius: 3, marginHorizontal: 4 },
   contentArea: { paddingHorizontal: 20, marginTop: 15 },
   noteText: { fontSize: 15, lineHeight: 26, color: '#333' },
-  floatingBottomNav: { position: 'absolute', bottom: 30, alignSelf: 'center', width: '85%', height: 60, backgroundColor: '#F5F5F5', borderRadius: 30, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 5 },
-  navItem: { padding: 10 },
   menuOverlay: { flex: 1, backgroundColor: 'transparent' }, 
   dropdownMenu: { position: 'absolute', top: 60, right: 15, width: 140, backgroundColor: '#FFF', borderRadius: 12, paddingVertical: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 10, elevation: 8 },
   menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16 },

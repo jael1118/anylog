@@ -8,8 +8,11 @@ export default function Layout() {
   const router = useRouter();
 
   // 設定「哪些頁面」需要顯示底部的懸浮導覽列
-  const showNavBarPages = ['/space', '/map', '/profile'];
-  const showNavBar = showNavBarPages.includes(pathname);
+  const showNavBarPages = ['/', '/space', '/map', '/profile'];
+const showNavBar = showNavBarPages.some(page => {
+  if (page === '/') return pathname === '/'; 
+  return pathname.startsWith(page);          
+});
 
   return (
     <View style={{ flex: 1 }}>

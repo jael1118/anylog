@@ -336,10 +336,7 @@ export default function App() {
               <TouchableOpacity style={styles.iconCircleBtn} onPress={() => setIsSearchMode(true)}>
                 <Feather name="search" size={18} color="#333" />
               </TouchableOpacity>
-              <TouchableOpacity style={styles.iconCircleBtn} onPress={() => {}}>
-                <Feather name="bell" size={18} color="#333" />
-                {hasUnreadNotifications && <View style={styles.notificationDot} />}
-              </TouchableOpacity>
+              
               <TouchableOpacity style={styles.iconCircleBtn} onPress={() => setIsSettingsMenuVisible(true)}>
                 <Feather name="more-horizontal" size={18} color="#333" />
               </TouchableOpacity>

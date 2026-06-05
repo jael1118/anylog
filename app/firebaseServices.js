@@ -1,5 +1,5 @@
 import { 
-  collection, query, where, onSnapshot, doc, orderBy,
+  collection, query, where, onSnapshot, doc, orderBy, writeBatch,
   updateDoc, arrayUnion, addDoc, setDoc, getDocs, getDoc, deleteDoc 
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
@@ -277,4 +277,89 @@ export const subscribeToComments = (spaceId, recordId, callback) => {
     }));
     callback(fetchedComments);
   });
+};
+
+// ==========================================
+// ✅ 通知系統 (修正變數與大小寫對齊版)
+// ==========================================
+
+// 1. 發送通知 (給空間裡的其他成員)
+export const sendNotificationToMembers = async (memberIds, senderId, notificationData) => {
+  try {
+    const batch = writeBatch(db); 
+    
+    // 檢查 memberIds 是否真的是一個陣列，並且有內容
+    if (!Array.isArray(memberIds) || memberIds.length === 0) {
+        console.warn("沒有成員名單，無法發送通知");
+        return;
+    }
+
+    memberIds.forEach(memberId => {
+      if (memberId !== senderId) {
+        // ✅ 修正點 1：將 Id 改為 memberId 
+        // ✅ 修正點 2：統一使用大寫的 'Users'
+        const notifRef = doc(collection(db, 'Users', memberId, 'notifications'));
+        batch.set(notifRef, {
+          ...notificationData,
+          isRead: false,
+          createdAt: Date.now()
+        });
+      }
+    });
+    
+    await batch.commit();
+    console.log("成功發送通知給其他成員！"); // 加這行方便看終端機
+  } catch (error) {
+    console.error("發送通知失敗:", error);
+  }
+};
+
+// 2. 即時監聽我的通知
+export const subscribeToMyNotifications = (userId, callback) => {
+  if (!userId) return () => {};
+  
+  // ✅ 確保這裡也是大寫的 'Users'
+  const q = query(
+    collection(db, 'Users', userId, 'notifications'), 
+    orderBy('createdAt', 'desc')
+  );
+  
+  return onSnapshot(q, (snapshot) => {
+    const notifs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    callback(notifs);
+  }, (error) => {
+      console.error("監聽通知失敗:", error);
+  });
+};
+
+// 3. 把未讀通知標記為「已讀」
+export const markNotificationsAsRead = async (userId, unreadNotifs) => {
+  if (!unreadNotifs || unreadNotifs.length === 0) return;
+  try {
+    const batch = writeBatch(db);
+    unreadNotifs.forEach(notif => {
+      // ✅ 確保這裡也是大寫的 'Users'
+      const notifRef = doc(db, 'Users', userId, 'notifications', notif.id);
+      batch.update(notifRef, { isRead: true });
+    });
+    await batch.commit();
+  } catch (error) {
+    console.error("標記已讀失敗:", error);
+  }
+};
+
+// ✅ 取得特定空間的詳細資料 (包含成員名單)
+export const getSpaceData = async (spaceId) => {
+  try {
+    // 你的空間資料夾叫大寫的 "Spaces"
+    const spaceRef = doc(db, "Spaces", spaceId);
+    const docSnap = await getDoc(spaceRef);
+    if (docSnap.exists()) {
+      return docSnap.data();
+    }
+    return null;
+  } catch (error) {
+    console.error("讀取空間資料失敗:", error);
+    return null;
+  }
 };
