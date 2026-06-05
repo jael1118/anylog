@@ -187,6 +187,7 @@ export default function SpaceListScreen() {
         <View style={styles.headerRight}>
                       <TouchableOpacity style={styles.iconCircleBtn} onPress={() => router.push('/notifications')}>
                                 <Feather name="bell" size={18} color="#333" />
+                                {hasUnreadNotifications && <View style={styles.notificationDot} />}
                               </TouchableOpacity>
                   </View>
       </View>
@@ -309,6 +310,15 @@ const styles = StyleSheet.create({
   headerLeft: { flexDirection: 'row', alignItems: 'center' },
   headerRight: { flexDirection: 'row' },
   iconCircleBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.85)', justifyContent: 'center', alignItems: 'center', marginLeft: 10 },
+  notificationDot: { 
+    position: 'absolute', 
+    top: 6, 
+    right: 8, 
+    width: 8, 
+    height: 8, 
+    borderRadius: 4, 
+    backgroundColor: '#FF3B30' 
+  },
   listContainer: { paddingHorizontal: 20, paddingBottom: 100 },
   
   spaceCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#FFF', borderRadius: 16, padding: 12, marginBottom: 15, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 3 },

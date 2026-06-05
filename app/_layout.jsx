@@ -1,25 +1,44 @@
-import React from 'react';
-import { View, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useState, useRef, useEffect } from 'react';
+import { View, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
 import { Stack, usePathname, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import { Video, ResizeMode } from 'expo-av';
+import * as SplashScreen from 'expo-splash-screen';
+
+// 防止系統預設的靜態閃屏自動消失
+SplashScreen.preventAutoHideAsync();
 
 export default function Layout() {
   const pathname = usePathname();
   const router = useRouter();
 
-  // 設定「哪些頁面」需要顯示底部的懸浮導覽列
+  // === 影片閃屏狀態管理 ===
+  const [isVideoFinished, setIsVideoFinished] = useState(false);
+
+  const handlePlaybackStatusUpdate = (status) => {
+    // 影片準備好開始播的瞬間，把系統靜態圖片藏起來
+    if (status.isLoaded && !status.isPlaying && status.positionMillis === 0) {
+      SplashScreen.hideAsync();
+    }
+    // 影片播完時，觸發狀態改變，讓這層影片消失
+    if (status.didJustFinish && !isVideoFinished) {
+      setIsVideoFinished(true);
+    }
+  };
+
+  // === 導覽列顯示邏輯 ===
   const showNavBarPages = ['/', '/space', '/map', '/profile'];
-const showNavBar = showNavBarPages.some(page => {
-  if (page === '/') return pathname === '/'; 
-  return pathname.startsWith(page);          
-});
+  const showNavBar = showNavBarPages.some(page => {
+    if (page === '/') return pathname === '/'; 
+    return pathname.startsWith(page);          
+  });
 
   return (
-    <View style={{ flex: 1 }}>
-      {/* 讓裡面的頁面維持原本的切換與動畫 */}
-      <Stack screenOptions={{ headerShown: false, animation: 'fade',animationDuration: 250 }} />
+    <View style={styles.container}>
+      {/* 1. 最底層：你的 App 畫面內容 */}
+      <Stack screenOptions={{ headerShown: false, animation: 'fade', animationDuration: 250 }} />
       
-      {/* 全域懸浮導覽列：只在我們設定的頁面中顯示 */}
+      {/* 2. 中間層：全域懸浮導覽列 */}
       {showNavBar && (
         <View style={styles.floatingBottomNav}>
           <TouchableOpacity 
@@ -44,11 +63,31 @@ const showNavBar = showNavBarPages.some(page => {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* 3. 最頂層：影片動畫層 (只要影片還沒播完，就蓋在最上面擋住後面的所有東西) */}
+      {!isVideoFinished && (
+        <View style={styles.videoOverlay}>
+          <Video
+            style={{width: 200, height: 200}}
+            source={require('../assets/icon.mp4')} // ⚠️ 務必確認你的影片路徑是否正確
+            resizeMode={ResizeMode.COVER}
+            shouldPlay={true}
+            isLooping={false}
+            onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
+          />
+        </View>
+      )}
     </View>
   );
 }
 
+const { width, height } = Dimensions.get('window');
+
 const styles = StyleSheet.create({
+  container: { 
+    flex: 1,
+    backgroundColor: '#000', // 影片還沒出來前墊個黑底，防止閃白
+  },
   floatingBottomNav: { 
     position: 'absolute', 
     bottom: 30, 
@@ -68,4 +107,14 @@ const styles = StyleSheet.create({
   },
   navItem: { padding: 12, borderRadius: 20 },
   navItemActive: { backgroundColor: '#D4D4D4' },
+  
+  // 影片層的樣式：絕對定位，蓋滿整個螢幕，z-index 設很高確保它在最前面
+  videoOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#ffffff', // 防止影片比例不同時露出後面的導覽列
+    zIndex: 9999, 
+    elevation: 9999,
+    justifyContent: 'center', 
+    alignItems: 'center',
+  }
 });
