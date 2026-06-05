@@ -25,7 +25,7 @@
       "url": "https://u.expo.dev/e9572fde-c3da-4ebb-87d1-2f1c8a88d832"
     },
     "requireFullScreen": true,
-    "android": {},
+    "android": {"softwareKeyboardLayoutMode": "adjustResize"},
     "ios": {}
   }
 }

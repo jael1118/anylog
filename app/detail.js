@@ -1,14 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   StyleSheet, Text, View, SafeAreaView, FlatList, 
   TouchableOpacity, Dimensions, Image, StatusBar, ScrollView,
-  Modal, Alert, Share, TextInput, KeyboardAvoidingView, Platform 
+  Modal, Alert, Share, TextInput, Platform, Keyboard 
 } from 'react-native';
+// 🌟 1. 引入全自動避開鍵盤的滾動組件
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage'; 
 
-// ✅ 引入剛剛寫好的留言串接服務
 import { 
   deleteRecordFromSpace, addCommentToRecord, subscribeToComments, getUserProfile, sendNotificationToMembers, getSpaceData 
 } from './firebaseServices';
@@ -18,7 +19,10 @@ const windowWidth = Dimensions.get('window').width;
 export default function DetailScreen() {
   const router = useRouter();
   const { record: recordString } = useLocalSearchParams();
-  const record = recordString ? JSON.parse(recordString) : null;
+  
+  const record = useMemo(() => {
+    return recordString ? JSON.parse(recordString) : null;
+  }, [recordString]);
 
   const [activeIndex, setActiveIndex] = useState(0);
   const [isMenuVisible, setIsMenuVisible] = useState(false);
@@ -29,34 +33,62 @@ export default function DetailScreen() {
   const [myUserId, setMyUserId] = useState(null);
   const [myProfile, setMyProfile] = useState({ name: '我', avatarUrl: null });
   const [commentText, setCommentText] = useState('');
-  
-  // 留言列表改由 Firebase 實時同步
   const [comments, setComments] = useState([]); 
-  // 大頭貼字典暫存器 (結構如：{ 'user_123': 'http://...', 'user_456': null })
-  const [commenterProfiles, setCommenterProfiles] = useState({});
+
+  // 萬用大頭貼核心字典池
+  const [userProfiles, setUserProfiles] = useState({}); 
+  
+  // 穩定鎖定軌道 Ref，防止非同步重複抓取造成破圖
+  const fetchedUidsRef = useRef(new Set());
 
   if (!record) return null;
   const images = record.imageUrls || (record.imageUrl ? [record.imageUrl] : []);
   const tags = record?.tags || []; 
 
   // 1. 初始化拿取目前使用者 ID 與個人頭像
-  useEffect(() => {
-    const initializeUser = async () => {
+  // 請在 App.js 頂部確認或更換 initializeUser 函式：
+useEffect(() => {
+  const initializeUser = async () => {
+    try {
       let storedId = await AsyncStorage.getItem('@my_device_user_id');
-      setMyUserId(storedId);
-      if (storedId) {
-        try {
-          const profile = await getUserProfile(storedId);
-          if (profile) setMyProfile(profile);
-        } catch (e) {
-          console.log("無法載入個人頭像", e);
-        }
-      }
-    };
-    initializeUser();
-  }, []);
 
-  // 2. 實時訂閱 Firebase 留言資料庫
+      // 第一次進 app
+      if (!storedId) {
+        const randomString = Math.random().toString(36).substring(2, 10);
+        storedId = `user_${Date.now()}_${randomString}`;
+
+        await AsyncStorage.setItem('@my_device_user_id', storedId);
+      }
+
+      setMyUserId(storedId);
+
+      // 讀取 Firebase 使用者資料
+      let profile = await getUserProfile(storedId);
+
+      // 如果沒有資料就建立預設帳號
+      if (!profile) {
+        profile = {
+          name: `成員_${storedId.slice(-4)}`,
+          avatarUrl: "https://api.dicebear.com/7.x/bottts/png",
+          isOnline: true,
+          createdAt: Date.now()
+        };
+
+        await updateUserProfile(storedId, profile);
+      }
+
+      // ⭐⭐ 最重要的一行
+      setMyProfile(profile);
+
+    } catch (e) {
+      console.error("讀取或註冊身分失敗:", e);
+    }
+  };
+
+  initializeUser();
+}, []);
+
+   // 2. 實時訂閱 Firebase 留言資料庫
   useEffect(() => {
     if (!record?.spaceId || !record?.id) return;
     
@@ -67,35 +99,52 @@ export default function DetailScreen() {
     return () => unsubscribe();
   }, [record?.spaceId, record?.id]);
 
-  // 3. 智慧動態分析：當有新留言時，自動去撈留言者的真實頭像
+
+  // 3. 萬用字典快取器！超穩定指針防閉包，精準渲染所有頭像
+  const authorId = record?.userId || record?.creatorId || record?.uid || record?.authorId || '';
+  const commentUserIdsStr = comments ? comments.map(c => c.userId).join(',') : '';
+
   useEffect(() => {
-    const fetchCommentersAvatars = async () => {
-      if (comments.length === 0) return;
+    const uidsToFetch = [];
+    
+    if (authorId && !fetchedUidsRef.current.has(authorId)) {
+      uidsToFetch.push(authorId);
+    }
+    
+    if (comments && comments.length > 0) {
+      comments.forEach(c => {
+        if (c.userId && !fetchedUidsRef.current.has(c.userId)) {
+          uidsToFetch.push(c.userId);
+        }
+      });
+    }
+
+    if (uidsToFetch.length === 0) return;
+
+    uidsToFetch.forEach(id => fetchedUidsRef.current.add(id));
+
+    const doFetchBatch = async () => {
+      const batchResults = {};
       
-      const newProfiles = { ...commenterProfiles };
-      let hasUpdates = false;
-
-      // 找出畫面上所有留言者的真實 UserID
-      const userIdsInComments = new Set(comments.map(c => c.userId));
-
-      for (const id of userIdsInComments) {
-        // 如果這個留言者的資料在暫存器裡還沒記錄，就去資料庫撈一次
-        if (newProfiles[id] === undefined) {
+      await Promise.all(
+        uidsToFetch.map(async (id) => {
           try {
             const profile = await getUserProfile(id);
-            newProfiles[id] = profile?.avatarUrl || null; // 有圖給圖，沒圖給 null
-            hasUpdates = true;
+            batchResults[id] = profile?.avatarUrl || null;
           } catch (e) {
-            newProfiles[id] = null;
+            batchResults[id] = null;
           }
-        }
-      }
+        })
+      );
 
-      if (hasUpdates) setCommenterProfiles(newProfiles);
+      setUserProfiles(prev => ({
+        ...prev,
+        ...batchResults
+      }));
     };
 
-    fetchCommentersAvatars();
-  }, [comments]);
+    doFetchBatch();
+  }, [authorId, commentUserIdsStr]);
 
   // 時間格式化
   const formatTime = (ts) => {
@@ -164,13 +213,10 @@ export default function DetailScreen() {
     );
   };
 
-  // ✅ 處理送出留言（正式寫入 Firebase）
-  // ✅ 處理送出留言（正式寫入 Firebase + 正確發送通知）
   const handleSendComment = async () => {
     if (!commentText.trim() || !myUserId) return;
     
     try {
-      // 1. 成功寫入留言到資料庫
       await addCommentToRecord(
         record.spaceId, 
         record.id, 
@@ -179,14 +225,12 @@ export default function DetailScreen() {
         commentText.trim()
       );
 
-      // 2. 正確去資料庫拿「這個空間的成員名單」
       const spaceData = await getSpaceData(record.spaceId);
 
-      // 3. 如果有拿到成員名單，就發送通知
       if (spaceData && spaceData.members && spaceData.members.length > 0) {
         await sendNotificationToMembers(
-          spaceData.members, // 傳入正確的成員陣列
-          myUserId,          // 自己不要收到自己的通知
+          spaceData.members, 
+          myUserId,          
           {
             userName: myProfile?.name || '神祕成員',
             userAvatar: myProfile?.avatarUrl || null,
@@ -196,24 +240,40 @@ export default function DetailScreen() {
           }
         );
       }
-
-      setCommentText(''); // 成功後清空輸入框
+      setCommentText(''); 
+      Keyboard.dismiss(); // 發送成功後自動收起鍵盤
     } catch (e) {
-      console.error("留言發生錯誤:", e); // 如果還出錯，這裡會印出真正的原因
+      console.error("留言發生錯誤:", e); 
       Alert.alert("提示", "留言發送失敗，請稍後再試。");
     }
   };
+
+  // 安全防呆頭像過濾
+  const rawCreatorAvatar = userProfiles[authorId] || record?.userAvatar || record?.avatarUrl || null;
+  const finalCreatorAvatar = (typeof rawCreatorAvatar === 'string' && rawCreatorAvatar.trim() !== '') ? rawCreatorAvatar : null;
+
+  const rawMyAvatar = myProfile?.avatarUrl || userProfiles[myUserId] || null;
+  const finalMyAvatar = (typeof rawMyAvatar === 'string' && rawMyAvatar.trim() !== '') ? rawMyAvatar : null;
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
       
-      {/* 1. 頂部 Header */}
+      {/* 頂部 Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <Feather name="chevron-left" size={26} color="#000" />
           </TouchableOpacity>
+          
+          <View style={styles.headerAuthorAvatarWrapper}>
+            {finalCreatorAvatar ? (
+              <Image source={{ uri: finalCreatorAvatar }} style={styles.headerAuthorAvatar} />
+            ) : (
+              <Feather name="user" size={16} color="#666" />
+            )}
+          </View>
+
           <View style={styles.headerInfo}>
             <Text style={styles.timeText}>{formatTime(record.createdAt)}</Text>
             <View style={styles.locationRow}>
@@ -242,104 +302,109 @@ export default function DetailScreen() {
         </View>
       </View>
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
-          <View style={styles.imageSection}>
-            {images.length > 0 ? (
-              <FlatList
-                data={images}
-                horizontal
-                pagingEnabled
-                showsHorizontalScrollIndicator={false}
-                onMomentumScrollEnd={(e) => {
-                  const offset = e.nativeEvent.contentOffset.x;
-                  setActiveIndex(Math.round(offset / windowWidth));
-                }}
-                renderItem={({ item }) => (
-                  <Image source={{ uri: item }} style={styles.mainImage} resizeMode="cover" />
-                )}
-                keyExtractor={(item, index) => index.toString()}
-              />
-            ) : (
-              <View style={styles.mainImage} />
-            )}
-          </View>
+      {/* 🌟 2. 核心修改：移除舊的 KeyboardAvoidingView，全面置換為 KeyboardAwareScrollView 外殼 */}
+      <KeyboardAwareScrollView 
+        style={{ flex: 1 }} 
+        contentContainerStyle={{ paddingBottom: 140 }} 
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        enableOnAndroid={true}              // 完美適配 Android
+        enableAutomaticScroll={true}        // 啟用自動跟隨滾動
+        extraScrollHeight={140}             // 關鍵拉抬：打字時自動把整條留言欄送到中央位置
+      >
+        <View style={styles.imageSection}>
+          {images.length > 0 ? (
+            <FlatList
+              data={images}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              onMomentumScrollEnd={(e) => {
+                const offset = e.nativeEvent.contentOffset.x;
+                setActiveIndex(Math.round(offset / windowWidth));
+              }}
+              renderItem={({ item }) => (
+                <Image source={{ uri: item }} style={styles.mainImage} resizeMode="cover" />
+              )}
+              keyExtractor={(item, index) => index.toString()}
+            />
+          ) : (
+            <View style={styles.mainImage} />
+          )}
+        </View>
 
-          {images.length > 1 && (
-            <View style={styles.dotsContainer}>
-              {images.map((_, i) => (
-                <View key={i} style={[styles.dot, { backgroundColor: i === activeIndex ? '#D9D9D9' : '#F0F0F0' }]} />
+        {images.length > 1 && (
+          <View style={styles.dotsContainer}>
+            {images.map((_, i) => (
+              <View key={i} style={[styles.dot, { backgroundColor: i === activeIndex ? '#D9D9D9' : '#F0F0F0' }]} />
+            ))}
+          </View>
+        )}
+
+        <View style={styles.contentArea}>
+          {tags.length > 0 && (
+            <View style={styles.tagsContainer}>
+              {tags.map((tag, index) => (
+                <View key={index} style={styles.tagBadge}><Text style={styles.tagText}>#{tag}</Text></View>
               ))}
             </View>
           )}
 
-          <View style={styles.contentArea}>
-            {tags.length > 0 && (
-              <View style={styles.tagsContainer}>
-                {tags.map((tag, index) => (
-                  <View key={index} style={styles.tagBadge}><Text style={styles.tagText}>#{tag}</Text></View>
-                ))}
-              </View>
-            )}
+          <Text style={styles.noteText}>{record.note || "這筆紀錄沒有文字描述。"}</Text>
+          <View style={styles.commentDivider} />
 
-            <Text style={styles.noteText}>{record.note || "這筆紀錄沒有文字描述。"}</Text>
-
-            <View style={styles.commentDivider} />
-
-            {/* 留言輸入區 */}
-            <View style={styles.commentRow}>
-              <View style={styles.commentAvatar}>
-                {/* ✅ 自己有設定頭像就顯示，沒有就給預設灰底人頭 */}
-                {myProfile?.avatarUrl ? (
-                  <Image source={{ uri: myProfile.avatarUrl }} style={styles.avatarImage} />
-                ) : (
-                  <Feather name="user" size={16} color="#FFF" />
-                )}
-              </View>
-              <View style={styles.commentInputWrapper}>
-                <TextInput
-                  style={styles.commentInput}
-                  placeholder="留下你的想法.."
-                  placeholderTextColor="#999"
-                  value={commentText}
-                  onChangeText={setCommentText}
-                  multiline={true}
-                />
-                {commentText.length > 0 && (
-                  <TouchableOpacity onPress={handleSendComment} style={{ padding: 5 }}>
-                    <Feather name="send" size={18} color="#333" />
-                  </TouchableOpacity>
-                )}
-              </View>
+          {/* 留言輸入區 (現在打字會全自動精準抬高) */}
+          <View style={styles.commentRow}>
+            <View style={styles.commentAvatar}>
+              {finalMyAvatar ? (
+                <Image source={{ uri: finalMyAvatar }} style={styles.avatarImage} />
+              ) : (
+                <Feather name="user" size={16} color="#666" />
+              )}
             </View>
-
-            {/* 歷史留言列表 */}
-            {comments.map((c) => {
-              // ✅ 從快取字典拿取這個留言者的真實頭像
-              const commenterAvatarUrl = commenterProfiles[c.userId];
-
-              return (
-                <View key={c.id} style={styles.commentRow}>
-                  <View style={styles.commentAvatar}>
-                    {commenterAvatarUrl ? (
-                      <Image source={{ uri: commenterAvatarUrl }} style={styles.avatarImage} />
-                    ) : (
-                      <Feather name="user" size={16} color="#FFF" />
-                    )}
-                  </View>
-                  <View style={styles.commentBubble}>
-                    {/* 順便在留言上方粗體顯示留言者名稱，這樣更清楚是誰留的 */}
-                    <Text style={styles.commenterNameText}>{c.userName}</Text>
-                    <Text style={styles.commentBubbleText}>{c.text}</Text>
-                  </View>
-                </View>
-              );
-            })}
-
+            <View style={styles.commentInputWrapper}>
+              <TextInput
+                style={styles.commentInput}
+                placeholder="留下你的想法.."
+                placeholderTextColor="#999"
+                value={commentText}
+                onChangeText={setCommentText}
+                multiline={true}
+              />
+              {commentText.length > 0 && (
+                <TouchableOpacity onPress={handleSendComment} style={{ padding: 5 }}>
+                  <Feather name="send" size={18} color="#333" />
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
 
+          {/* 歷史留言列表 */}
+          {comments.map((c) => {
+            const commenterAvatarUrl = userProfiles[c.userId];
+            const finalCommenterAvatar = (typeof commenterAvatarUrl === 'string' && commenterAvatarUrl.trim() !== '') ? commenterAvatarUrl : null;
+            
+            return (
+              <View key={c.id} style={styles.commentRow}>
+                <View style={styles.commentAvatar}>
+                  {finalCommenterAvatar ? (
+                    <Image source={{ uri: finalCommenterAvatar }} style={styles.avatarImage} />
+                  ) : (
+                    <Feather name="user" size={16} color="#666" />
+                  )}
+                </View>
+                <View style={styles.commentBubble}>
+                  <Text style={styles.commenterNameText}>{c.userName}</Text>
+                  <Text style={styles.commentBubbleText}>{c.text}</Text>
+                </View>
+              </View>
+            );
+          })}
+
+        </View>
+      </KeyboardAwareScrollView>
+
+      {/* 下拉選單 Modal */}
       <Modal visible={isMenuVisible} transparent={true} animationType="fade">
         <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setIsMenuVisible(false)}>
           <SafeAreaView>
@@ -370,7 +435,11 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF' },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 15, paddingVertical: 10, backgroundColor: '#FFF' },
   headerLeft: { flexDirection: 'row', alignItems: 'center' },
-  backBtn: { marginRight: 15 },
+  backBtn: { marginRight: 12 },
+  
+  headerAuthorAvatarWrapper: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#F2F2F7', justifyContent: 'center', alignItems: 'center', marginRight: 12, overflow: 'hidden' },
+  headerAuthorAvatar: { width: 36, height: 36, borderRadius: 18 }, 
+  
   headerInfo: { justifyContent: 'center' },
   timeText: { fontSize: 13, fontWeight: '700', color: '#000', marginBottom: 2 },
   locationRow: { flexDirection: 'row', alignItems: 'center' },
@@ -395,14 +464,12 @@ const styles = StyleSheet.create({
   commentDivider: { height: 1, backgroundColor: '#E0E0E0', marginVertical: 20 },
   
   commentRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 15 },
-  // ✅ 大頭貼容器加上置中與裁切
-  commentAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#CCC', justifyContent: 'center', alignItems: 'center', marginRight: 12, marginTop: 2, overflow: 'hidden' },
-  avatarImage: { width: '100%', height: '100%' },
+  commentAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#F2F2F7', justifyContent: 'center', alignItems: 'center', marginRight: 12, marginTop: 2, overflow: 'hidden' },
+  avatarImage: { width: 36, height: 36, borderRadius: 18 }, 
   
   commentInputWrapper: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#F0F0F0', borderRadius: 6, minHeight: 40, paddingHorizontal: 12 },
   commentInput: { flex: 1, fontSize: 14, color: '#333', paddingVertical: 10 },
   
-  // 留言對話框
   commentBubble: { flex: 1, backgroundColor: '#F5F5F5', borderRadius: 6, padding: 12, borderWidth: 1, borderColor: '#EAEAEA' },
   commenterNameText: { fontSize: 12, fontWeight: '700', color: '#111', marginBottom: 4 },
   commentBubbleText: { fontSize: 14, color: '#333', lineHeight: 20 },

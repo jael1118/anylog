@@ -44,8 +44,6 @@ export default function App() {
   const [isEditNameModalVisible, setIsEditNameModalVisible] = useState(false);
   const [editSpaceName, setEditSpaceName] = useState('');
 
-  const [hasUnreadNotifications, setHasUnreadNotifications] = useState(false);
-
   const scrollY = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -84,6 +82,9 @@ export default function App() {
     return () => unsubscribe();
   }, [myUserId, currentSpace?.id, spaceId]);
 
+  // 固定成員名單 key，防止即時異步渲染漏洞
+  const membersKey = currentSpace?.members ? currentSpace.members.join(',') : '';
+
   useEffect(() => {
     const fetchMembers = async () => {
       if (currentSpace && currentSpace.members && currentSpace.members.length > 0) {
@@ -91,7 +92,12 @@ export default function App() {
           const profiles = await Promise.all(
             currentSpace.members.map(async (id) => {
               const profile = await getUserProfile(id);
-              return profile || { id, name: '空間成員', avatarUrl: null };
+              return {
+                id: id,
+                name: profile?.name || '空間成員',
+                avatarUrl: profile?.avatarUrl || null,
+                isOnline: id === myUserId ? true : (profile?.isOnline || false)
+              };
             })
           );
           setMemberProfiles(profiles);
@@ -103,7 +109,7 @@ export default function App() {
       }
     };
     fetchMembers();
-  }, [currentSpace?.members]);
+  }, [membersKey, myUserId]);
 
   useEffect(() => {
     if (!currentSpace) {
@@ -117,24 +123,17 @@ export default function App() {
     return () => unsubscribe();
   }, [currentSpace?.id]);
 
-  const handleConfirmAction = async () => {
-    if (!myUserId) return;
-    if (spaceModalMode === 'join') {
-      const result = await joinSpaceByCode(inputValue, myUserId);
-      if (result) {
-        setCurrentSpace({ id: result.spaceId, name: result.name }); 
-        Alert.alert("成功加入", `已成功加入 ${result.name}`);
-        setIsSpaceModalVisible(false); 
-      }
-    } else {
-      const result = await createNewSpace(inputValue, myUserId);
-      if (result) {
-        setCurrentSpace({ id: result.spaceId, name: result.name, inviteCode: result.inviteCode });
-        Alert.alert("創建成功！", `邀請碼為：${result.inviteCode}\n快把代碼分享給朋友吧！`);
-        setIsSpaceModalVisible(false); 
-      }
+  const handleUpdateName = async () => {
+    if (!editSpaceName.trim()) {
+      Alert.alert("提示", "空間名稱不能為空喔！");
+      return;
     }
-    setInputValue('');
+    try {
+      await updateSpaceName(currentSpace.id, editSpaceName);
+      setIsEditNameModalVisible(false);
+    } catch (e) {
+      Alert.alert("錯誤", "更改名稱失敗，請稍後再試。");
+    }
   };
 
   const handleSelectBackground = async () => {
@@ -158,19 +157,6 @@ export default function App() {
       } finally {
         setIsUploadingBg(false);
       }
-    }
-  };
-
-  const handleUpdateName = async () => {
-    if (!editSpaceName.trim()) {
-      Alert.alert("提示", "空間名稱不能為空喔！");
-      return;
-    }
-    try {
-      await updateSpaceName(currentSpace.id, editSpaceName);
-      setIsEditNameModalVisible(false);
-    } catch (e) {
-      Alert.alert("錯誤", "更改名稱失敗，請稍後再試。");
     }
   };
 
@@ -205,6 +191,10 @@ export default function App() {
     const firstImage = item.imageUrls ? item.imageUrls[0] : item.imageUrl;
     const isMultiple = item.imageUrls && item.imageUrls.length > 1;
 
+    const targetUid = item.userId || item.creatorId || item.uid || item.authorId;
+    const postCreator = memberProfiles.find(m => m.id === targetUid);
+    const realAvatarUrl = postCreator?.avatarUrl || item.userAvatar || item.avatarUrl || null;
+
     return (
       <TouchableOpacity 
         key={item.id}
@@ -225,6 +215,15 @@ export default function App() {
                 <Feather name="layers" size={14} color="white" />
               </View>
             )}
+            <View style={styles.postCreatorAvatarContainer}>
+              {realAvatarUrl ? (
+                <Image source={{ uri: realAvatarUrl }} style={styles.postCreatorAvatar} />
+              ) : (
+                <View style={styles.postCreatorAvatarPlaceholder}>
+                  <Feather name="user" size={10} color="#FFF" />
+                </View>
+              )}
+            </View>
           </>
         ) : (
           <View style={styles.placeholderGrid} />
@@ -236,7 +235,9 @@ export default function App() {
   const renderMonthSection = ({ item }) => {
     return (
       <View style={styles.monthSectionContainer}>
-        <Text style={styles.monthHeaderText}>{item.month}</Text>
+        <View style={styles.monthHeaderBar}>
+          <Text style={styles.monthHeaderText}>{item.month}</Text>
+        </View>
         <View style={styles.monthGrid}>
           {item.data.map(record => renderRecordItem(record))}
         </View>
@@ -244,9 +245,23 @@ export default function App() {
     );
   };
 
+  // 🌟 動態核心：計算成員列表的滑動與淡出動畫
   const blurOpacity = scrollY.interpolate({
     inputRange: [0, 150],
     outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
+
+  // 當滑動距離達到 60px 到 160px 之間時，成員欄會流暢往上縮 45px 並化為透明
+  const memberOpacity = scrollY.interpolate({
+    inputRange: [60, 160],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+
+  const memberTranslateY = scrollY.interpolate({
+    inputRange: [60, 160],
+    outputRange: [0, -45],
     extrapolate: 'clamp',
   });
 
@@ -262,23 +277,20 @@ export default function App() {
             <ActivityIndicator size="small" color="#333" />
           </View>
         ) : currentSpace?.backgroundImageUrl ? (
-          <Image 
-            source={{ uri: currentSpace.backgroundImageUrl }} 
-            style={styles.backgroundImage} 
-            resizeMode="cover" 
-          />
+          <Image source={{ uri: currentSpace.backgroundImageUrl }} style={styles.backgroundImage} resizeMode="cover" />
         ) : (
           <View style={styles.placeholderBackground}>
             <Feather name="image" size={32} color="#AAA" />
           </View>
         )}
         
-        <LinearGradient colors={['rgba(0,0,0,0.4)', 'transparent']} style={styles.topFaintGradient} pointerEvents="none" />
+        <LinearGradient colors={['rgba(0,0,0,0.75)', 'rgba(0,0,0,0.3)', 'transparent']} style={styles.topFaintGradient} pointerEvents="none" />
         <LinearGradient colors={['rgba(255,255,255,0)', 'rgba(255, 255, 255, 0.3)', '#FFFFFF']} style={styles.bottomFadeGradient} pointerEvents="none" />
         <Animated.View style={[styles.backgroundOverlay, { opacity: blurOpacity }]} pointerEvents="none" />
       </View>
 
-      <View style={styles.fixedHeader}>
+      {/* 雙層懸浮導覽列 */}
+      <View style={styles.fixedHeader} pointerEvents="box-none">
         {isSearchMode ? (
           <View style={styles.header}>
             <View style={styles.searchHeaderContainer}>
@@ -294,53 +306,72 @@ export default function App() {
             </View>
           </View>
         ) : (
-          <View style={styles.header}>
-            <View style={styles.headerLeft}>
-              <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 10 }}>
-                <Feather name="chevron-left" size={28} color="#111" />
-              </TouchableOpacity>
-
-              <View style={styles.spaceNamePill}>
-                <Text style={styles.categoryText} numberOfLines={1}>
-                  {currentSpace ? currentSpace.name : "..."}
-                </Text>
+          <View style={styles.headerColumnWrapper} pointerEvents="box-none">
+            
+            {/* ⬆️ 上排元件：返回鍵與標題皆升級為透透黑底 */}
+            <View style={styles.headerTopRow}>
+              <View style={styles.headerTopLeft}>
+                {/* 🌟 修正：返回鍵改成透明黑底圓鈕 */}
+                <TouchableOpacity onPress={() => router.back()} style={styles.backCircleBtn}>
+                  <Feather name="chevron-left" size={24} color="#FFFFFF" />
+                </TouchableOpacity>
+                {/* 🌟 修正：空間名稱改成修長精緻的透明黑底膠囊 */}
+                <View style={styles.titlePillWrapper}>
+                  <Text style={styles.spaceMainTitle} numberOfLines={1}>
+                    {currentSpace ? currentSpace.name : "..."}
+                  </Text>
+                </View>
               </View>
 
-              <View style={styles.friendsContainer}>
-                <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' , zIndex: 2 }} activeOpacity={0.7} onPress={() => currentSpace && setIsMembersModalVisible(true)}>
-                  {memberProfiles.slice(0, 3).map((profile, index) => (
-                    <View key={index} style={[styles.avatar, { zIndex: 3 - index, marginLeft: index > 0 ? -12 : 0, justifyContent: 'center', alignItems: 'center', backgroundColor: profile.avatarUrl ? 'transparent' : '#CCC' }]}>
+              <View style={styles.headerRightButtons}>
+                <TouchableOpacity style={styles.iconCircleBtn} onPress={() => setIsSearchMode(true)}>
+                  <Feather name="search" size={18} color="#FFFFFF" />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.iconCircleBtn} onPress={() => setIsSettingsMenuVisible(true)}>
+                  <Feather name="more-horizontal" size={18} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* ⬇️ 下排元件：成員列表（綁定滾動折疊動畫，且間距推開不碰到） */}
+            <Animated.View 
+              style={[
+                styles.headerBottomRow, 
+                { opacity: memberOpacity, transform: [{ translateY: memberTranslateY }] }
+              ]}
+            >
+              <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', zIndex: 2 }} activeOpacity={0.7} onPress={() => currentSpace && setIsMembersModalVisible(true)}>
+                {memberProfiles.slice(0, 3).map((profile, index) => (
+                  // 🌟 修正：每個頭像右側加入間距，完全分離不重疊
+                  <View key={index} style={[styles.avatarStackWrapper, { zIndex: 3 - index, marginLeft: index > 0 ? 6 : 0 }]}>
+                    <View style={[styles.avatarBaseFrame, profile.isOnline && styles.avatarFrameOnline]}>
                       {profile.avatarUrl ? (
-                        <Image source={{ uri: profile.avatarUrl }} style={{ width: '100%', height: '100%', borderRadius: 16 }} />
+                        <Image source={{ uri: profile.avatarUrl }} style={styles.avatarImageContent} />
                       ) : (
-                        <Feather name="user" size={16} color="#FFF" />
+                        <Feather name="user" size={14} color="#FFF" />
                       )}
                     </View>
-                  ))}
-                  {memberProfiles.length > 3 && (
-                     <View style={[styles.avatar, { zIndex: 0, marginLeft: -12, justifyContent: 'center', alignItems: 'center', backgroundColor: '#999' }]}>
+                    {profile.isOnline && <View style={styles.onlineStatusWhiteDot} />}
+                  </View>
+                ))}
+                
+                {memberProfiles.length > 3 && (
+                   <View style={[styles.avatarStackWrapper, { zIndex: 0, marginLeft: 6 }]}>
+                     <View style={styles.avatarMoreCircle}>
                        <Feather name="more-horizontal" size={14} color="#FFF" />
                      </View>
-                  )}
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={[styles.addFriendBtn, { zIndex: 1 },memberProfiles.length === 0 && { marginLeft: 0 }]} 
-                  onPress={() => { currentSpace && currentSpace.inviteCode ? setIsInviteCodeVisible(true) : Alert.alert("提示", "請先切換到一個空間"); }}
-                >
-                  <Feather name="plus" size={16} color="#666" />
-                </TouchableOpacity>
-              </View>
-            </View>
+                   </View>
+                )}
+              </TouchableOpacity>
 
-            <View style={styles.headerRight}>
-              <TouchableOpacity style={styles.iconCircleBtn} onPress={() => setIsSearchMode(true)}>
-                <Feather name="search" size={18} color="#333" />
+              <TouchableOpacity 
+                style={styles.addFriendCircleButton} 
+                onPress={() => { currentSpace && currentSpace.inviteCode ? setIsInviteCodeVisible(true) : Alert.alert("提示", "請先切換到一個空間"); }}
+              >
+                <Feather name="plus" size={16} color="#FFF" />
               </TouchableOpacity>
-              
-              <TouchableOpacity style={styles.iconCircleBtn} onPress={() => setIsSettingsMenuVisible(true)}>
-                <Feather name="more-horizontal" size={18} color="#333" />
-              </TouchableOpacity>
-            </View>
+            </Animated.View>
+
           </View>
         )}
       </View>
@@ -354,7 +385,7 @@ export default function App() {
         scrollEventThrottle={16}
         style={styles.flatListStyle}
         contentContainerStyle={[styles.listContentContainer, records.length === 0 && { paddingBottom: windowHeight }]}
-        ListHeaderComponent={<View><TouchableOpacity style={{ height: 260, width: '100%' }} activeOpacity={1} /></View>}
+        ListHeaderComponent={<View><TouchableOpacity style={{ height: 330, width: '100%' }} activeOpacity={1} /></View>}
         ListEmptyComponent={
           <View style={styles.emptyStateContainer}>
             <Feather name={isSearchMode && searchText ? "search" : "image"} size={60} color="#E0E0E0" />
@@ -363,23 +394,17 @@ export default function App() {
         }
       />
 
-      <TouchableOpacity 
-        style={styles.fab} 
-        onPress={() => {
-          if (!currentSpace) return Alert.alert("提示", "請先加入一個空間！");
-          router.push({ pathname: '/upload', params: { currentSpaceId: currentSpace.id } });
-        }}
-      >
+      <TouchableOpacity style={styles.fab} onPress={() => {
+        if (!currentSpace) return Alert.alert("提示", "請先加入一個空間！");
+        router.push({ pathname: '/upload', params: { currentSpaceId: currentSpace.id } });
+      }}>
         <Feather name="plus" size={30} color="white" />
       </TouchableOpacity>
 
+      {/* 選單與彈窗 */}
       {isSettingsMenuVisible && (
         <View style={[StyleSheet.absoluteFill, { zIndex: 999 }]}>
-          <TouchableOpacity 
-            style={{ flex: 1, backgroundColor: 'transparent' }} 
-            activeOpacity={1} 
-            onPress={() => setIsSettingsMenuVisible(false)}
-          />
+          <TouchableOpacity style={{ flex: 1, backgroundColor: 'transparent' }} activeOpacity={1} onPress={() => setIsSettingsMenuVisible(false)} />
           <View style={styles.dropdownMenu}>
             <TouchableOpacity style={styles.menuItem} onPress={() => { 
               setIsSettingsMenuVisible(false); 
@@ -389,9 +414,7 @@ export default function App() {
               <Feather name="edit-2" size={18} color="#333" />
               <Text style={styles.menuItemText}>更改名稱</Text>
             </TouchableOpacity>
-
             <View style={styles.menuDivider} />
-
             <TouchableOpacity style={styles.menuItem} onPress={() => { 
               setIsSettingsMenuVisible(false); 
               handleSelectBackground(); 
@@ -403,7 +426,7 @@ export default function App() {
         </View>
       )}
 
-      {/* Modals */}
+      {/* Modals 保持功能穩定 */}
       <Modal visible={isEditNameModalVisible} transparent={true} animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -413,7 +436,7 @@ export default function App() {
               <TouchableOpacity style={[styles.modalCancelBtn, { flex: 1, marginRight: 10, backgroundColor: '#E0E0E0' }]} onPress={() => setIsEditNameModalVisible(false)}>
                 <Text style={[styles.modalCancelText, { color: '#666' }]}>取消</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalConfirmBtn, styles.joinBtnActive, { flex: 1, marginLeft: 10 }]} onPress={handleUpdateName}>
+              <TouchableOpacity style={[styles.modalConfirmBtn, { flex: 1, marginLeft: 10, backgroundColor: '#333' }]} onPress={handleUpdateName}>
                 <Text style={styles.modalConfirmText}>儲存</Text>
               </TouchableOpacity>
             </View>
@@ -424,9 +447,9 @@ export default function App() {
       <Modal visible={isInviteCodeVisible} transparent={true} animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { alignItems: 'center' }]}>
-            <View style={styles.modalHeader}>
+            <View style={styles.modalHeaderCloseRow}>
               <View style={{ width: 24 }} />
-              <Text style={[styles.modalTitle, { marginBottom: 0 }]}>邀請朋友加入</Text>
+              <Text style={styles.modalTitleTextOnly}>邀請朋友加入</Text>
               <TouchableOpacity onPress={() => setIsInviteCodeVisible(false)}>
                 <Feather name="x" size={24} color="black" />
               </TouchableOpacity>
@@ -435,7 +458,7 @@ export default function App() {
             <View style={styles.inviteCodeBox}>
               <Text style={styles.inviteCodeText}>{currentSpace?.inviteCode || '------'}</Text>
             </View>
-            <Text style={{ fontSize: 12, color: '#999', marginTop: 15 }}>朋友可於左上角輸入此代碼加入空間</Text>
+            <Text style={{ fontSize: 12, color: '#999', marginTop: 15 }}>朋友可於空間列表輸入此代碼加入空間</Text>
           </View>
         </View>
       </Modal>
@@ -443,8 +466,8 @@ export default function App() {
       <Modal visible={isMembersModalVisible} transparent={true} animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { maxHeight: '60%' }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { marginBottom: 0 }]}>空間成員 ({memberProfiles.length})</Text>
+            <View style={styles.modalHeaderCloseRow}>
+              <Text style={styles.modalTitleTextOnly}>空間成員 ({memberProfiles.length})</Text>
               <TouchableOpacity onPress={() => setIsMembersModalVisible(false)}>
                 <Feather name="x" size={24} color="black" />
               </TouchableOpacity>
@@ -456,6 +479,7 @@ export default function App() {
                     {member.avatarUrl ? <Image source={{ uri: member.avatarUrl }} style={{ width: '100%', height: '100%', borderRadius: 20 }} /> : <Feather name="user" size={18} color="#FFF" />}
                   </View>
                   <Text style={styles.memberListText}>{member.name}</Text>
+                  {member.isOnline && <Text style={{fontSize: 12, color: '#4CD964', marginLeft: 'auto', fontWeight: 'bold'}}>● 線上</Text>}
                 </View>
               ))}
             </ScrollView>
@@ -473,34 +497,59 @@ const styles = StyleSheet.create({
   backgroundImage: { width: '100%', height: '100%' },
   placeholderBackground: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#D9D9D9' },
   backgroundOverlay: { position: 'absolute', top: 0, left: 0, bottom: 0, right: 0, backgroundColor: 'rgba(255, 255, 255, 0.95)', zIndex: 4 },
-  topFaintGradient: { position: 'absolute', top: 0, left: 0, right: 0, height: 130, zIndex: 3 },
+  topFaintGradient: { position: 'absolute', top: 0, left: 0, right: 0, height: 220, zIndex: 3 },
   bottomFadeGradient: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 180, zIndex: 2 },
-  fixedHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100, paddingTop: Platform.OS === 'ios' ? 60 : (StatusBar.currentHeight || 24) + 10 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 15, paddingBottom: 10, minHeight: 50 },
-  headerLeft: { flexDirection: 'row', alignItems: 'center' },
-  headerRight: { flexDirection: 'row' },
+  
+  fixedHeader: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100, paddingTop: Platform.OS === 'ios' ? 55 : (StatusBar.currentHeight || 24) + 5 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 15, height: 50 },
+  headerColumnWrapper: { paddingHorizontal: 15, flexDirection: 'column' },
+  
+  headerTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', height: 45, zIndex: 10 },
+  headerTopLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  
+  // 🌟 新增：返回鍵透透黑底樣式
+  backCircleBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center', marginRight: 10 },
+  // 🌟 新增：空間名稱透透黑底膠囊樣式
+  titlePillWrapper: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center', maxWidth: windowWidth * 0.45 },
+  spaceMainTitle: { fontSize: 16, fontWeight: '700', color: '#FFFFFF', letterSpacing: -0.3 },
+  
+  headerRightButtons: { flexDirection: 'row', alignItems: 'center' },
+  
+  // 下排元件，zIndex 設低於上排，收縮時才會完美藏到後面
+  headerBottomRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10, paddingLeft: 46, zIndex: 1, height: 40 },
+  
+  avatarStackWrapper: { position: 'relative', width: 36, height: 36 }, 
+  avatarBaseFrame: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#CCCCCC', borderWidth: 1, borderColor: '#FFF', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+  avatarFrameOnline: { borderWidth: 3.5, borderColor: '#FFFFFF' }, 
+  avatarImageContent: { width: '100%', height: '100%', borderRadius: 16 },
+  onlineStatusWhiteDot: { position: 'absolute', bottom: 2, right: 2, width: 8, height: 8, borderRadius: 4, backgroundColor: '#FFFFFF' }, 
+  avatarMoreCircle: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#999', justifyContent: 'center', alignItems: 'center' },
+  
+  addFriendCircleButton: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center', marginLeft: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)', zIndex: 1 },
+  iconCircleBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center', marginLeft: 10 },
+  
   searchHeaderContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.85)', borderRadius: 20, paddingHorizontal: 15, height: 40 },
   searchInput: { flex: 1, fontSize: 15, color: '#333', padding: 0 },
-  spaceNamePill: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.85)', borderRadius: 20, paddingHorizontal: 15, paddingVertical: 8, maxWidth: 130 },
-  categoryText: { fontSize: 15, fontWeight: '600', color: '#111' },
-  friendsContainer: { flexDirection: 'row', alignItems: 'center', marginLeft: 10 },
-  avatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#CCCCCC', borderWidth: 1, borderColor: '#FFF' },
-  addFriendBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.85)', justifyContent: 'center', alignItems: 'center', marginLeft: -12, borderWidth: 1, borderColor: '#FFF' },
-  iconCircleBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.85)', justifyContent: 'center', alignItems: 'center', marginLeft: 10 },
-  notificationDot: { position: 'absolute', top: 8, right: 8, width: 6, height: 6, borderRadius: 3, backgroundColor: '#FF3B30' },
+  
   flatListStyle: { flex: 1, zIndex: 10, backgroundColor: 'transparent' }, 
   listContentContainer: { paddingBottom: 120 },
-  monthSectionContainer: { marginBottom: 5 },
-  monthHeaderText: { fontSize: 13, color: '#333', fontWeight: '600', paddingHorizontal: 20, paddingVertical: 12 },
+  
+  monthSectionContainer: { marginBottom: 12 },
+  monthHeaderBar: { backgroundColor: '#FFFFFF', width: windowWidth, paddingHorizontal: 20, paddingVertical: 10, marginBottom: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.02, shadowRadius: 1, elevation: 1 },
+  monthHeaderText: { fontSize: 14, color: '#111', fontWeight: '700' },
+  
   monthGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  imageGrid: { width: imageSize, height: imageSize, borderWidth: 1, borderColor: '#FFFFFF', backgroundColor: '#EBEBEB' },
+  imageGrid: { width: imageSize, height: imageSize, borderWidth: 1.5, borderColor: '#FFFFFF', backgroundColor: '#EBEBEB', position: 'relative' },
   recordImage: { width: '100%', height: '100%' },
   placeholderGrid: { width: '100%', height: '100%', backgroundColor: '#EBEBEB' },
-  multipleIcon: { position: 'absolute', top: 5, right: 5, backgroundColor: 'rgba(0,0,0,0.5)', padding: 4, borderRadius: 4 },
+  multipleIcon: { position: 'absolute', top: 6, right: 6, backgroundColor: 'rgba(0,0,0,0.5)', padding: 4, borderRadius: 4, zIndex: 5 },
+  
+  postCreatorAvatarContainer: { position: 'absolute', bottom: 8, left: 8, width: 24, height: 24, borderRadius: 12, borderWidth: 1.5, borderColor: '#FFFFFF', overflow: 'hidden', backgroundColor: '#CCC', zIndex: 5 },
+  postCreatorAvatar: { width: '100%', height: '100%' },
+  postCreatorAvatarPlaceholder: { width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' },
+
   emptyStateContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 100, backgroundColor: '#FFFFFF' },
   emptyStateText: { fontSize: 16, fontWeight: '600', color: '#BBB', marginTop: 15 },
-  
-  // ✅ 修改：FAB 往上抬一點，避開導覽列
   fab: { position: 'absolute', bottom: 100, right: 25, width: 56, height: 56, borderRadius: 28, backgroundColor: '#7A7A7A', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 5, zIndex: 90 },
 
   dropdownMenu: { position: 'absolute', top: Platform.OS === 'ios' ? 100 : 80, right: 15, width: 140, backgroundColor: '#FFF', borderRadius: 12, paddingVertical: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 10, elevation: 8 },
@@ -510,20 +559,15 @@ const styles = StyleSheet.create({
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
   modalContent: { width: '85%', backgroundColor: 'white', borderRadius: 15, padding: 20 },
-  
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 20 },
+  modalHeaderCloseRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 20 },
+  modalTitleTextOnly: { fontSize: 18, fontWeight: 'bold', color: '#333' },
   modalSubtitle: { fontSize: 14, color: '#666', marginBottom: 15, textAlign: 'center' },
-  
   modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: 15, textAlign: 'center' },
   modalInput: { backgroundColor: '#F5F5F5', borderRadius: 10, paddingHorizontal: 15, paddingVertical: 12, fontSize: 16, marginBottom: 20, color: '#333' },
-  modalBtnRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  modalCancelBtn: { flex: 1, paddingVertical: 12, alignItems: 'center', marginRight: 10, borderRadius: 10, backgroundColor: '#F0F0F0' },
+  modalCancelBtn: { paddingVertical: 12, alignItems: 'center', borderRadius: 10 },
   modalCancelText: { fontSize: 16, color: '#666', fontWeight: '600' },
-  modalConfirmBtn: { flex: 1, paddingVertical: 12, alignItems: 'center', marginLeft: 10, borderRadius: 10, backgroundColor: '#333' },
+  modalConfirmBtn: { paddingVertical: 12, alignItems: 'center', borderRadius: 10 },
   modalConfirmText: { fontSize: 16, color: '#FFF', fontWeight: '600' },
-  joinBtn: { backgroundColor: '#CCCCCC', padding: 15, borderRadius: 8, alignItems: 'center', marginTop: 10 },
-  joinBtnActive: { backgroundColor: '#333333' },
-  joinBtnText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
   inviteCodeBox: { backgroundColor: '#F5F5F5', paddingHorizontal: 30, paddingVertical: 15, borderRadius: 10, borderWidth: 2, borderColor: '#E0E0E0', borderStyle: 'dashed' },
   inviteCodeText: { fontSize: 32, fontWeight: '900', letterSpacing: 5, color: '#333' },
   memberListItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },

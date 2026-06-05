@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   StyleSheet, Text, View, SafeAreaView, TouchableOpacity, 
-  TextInput, Image, Alert, ScrollView, StatusBar, Modal, Keyboard, Platform,
-  Dimensions, FlatList
+  TextInput, Image, Alert, StatusBar, Modal, Keyboard, Platform,
+  Dimensions, FlatList, ScrollView // 💡 保留這裡的 ScrollView，因為下方的空間選取器需要橫向滾動
 } from 'react-native';
+// 🌟 1. 引入全自動避開鍵盤的滾動組件
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -13,7 +15,7 @@ import * as Location from 'expo-location';
 
 import { 
   subscribeToUserSpaces, addRecordToSpace, uploadImageToGitHub, sendNotificationToMembers,
-  updateRecordInSpace // ✅ 確保你的 firebaseServices 有提供或可呼叫更新特性的方法
+  updateRecordInSpace, getUserProfile 
 } from './firebaseServices'; 
 
 const { width: windowWidth } = Dimensions.get('window');
@@ -21,7 +23,6 @@ const { width: windowWidth } = Dimensions.get('window');
 export default function UploadScreen() {
   const router = useRouter();
   
-  // ✅ 接收從 detail 頁面傳過來的編輯資料
   const { currentSpaceId, editRecord: editRecordString } = useLocalSearchParams();
   const editRecord = editRecordString ? JSON.parse(editRecordString) : null;
 
@@ -74,7 +75,6 @@ export default function UploadScreen() {
     initialize();
   }, []);
 
-  // ✅ 新增：如果是「編輯模式」，一進來就把舊資料全部填入對應的 State
   useEffect(() => {
     if (editRecord) {
       setUploadTargetSpaceId(editRecord.spaceId || currentSpaceId);
@@ -210,7 +210,6 @@ export default function UploadScreen() {
     }
   };
 
-  // ✅ 修改：支援資料更新的上傳邏輯
   const handleUpload = async () => {
     if (selectedImages.length === 0 || !uploadTargetSpaceId) return;
     
@@ -219,7 +218,6 @@ export default function UploadScreen() {
       const cloudImageUrls = [];
       let base64Idx = 0;
       
-      // 💡 智慧防呆過濾：如果是原本就在 GitHub 上的網址(http開頭)，直接保留；如果是本機選的新照片，才轉 base64 上傳！
       for (const uri of selectedImages) {
         if (uri.startsWith('http')) {
           cloudImageUrls.push(uri);
@@ -235,31 +233,42 @@ export default function UploadScreen() {
       const combinedNote = notes.filter(n => n.trim() !== '').join('\n');
             
       if (editRecord) {
-        // 📝 模式 A：編輯更新舊資料
         await updateRecordInSpace(uploadTargetSpaceId, editRecord.id, cloudImageUrls, combinedNote, location, latitude, longitude);
       } else {
-        // 🚀 模式 B：發佈全新資料
-        await addRecordToSpace(uploadTargetSpaceId, cloudImageUrls, combinedNote, location, latitude, longitude);
+        await addRecordToSpace(uploadTargetSpaceId, cloudImageUrls, combinedNote, location, latitude, longitude, myUserId);
       }
       
+      // 🌟 安全的成員通知發送邏輯
+      const targetSpace = mySpaces.find(s => s.id === uploadTargetSpaceId);
+      if (targetSpace && targetSpace.members && targetSpace.members.length > 0) {
+        let userName = '神祕成員';
+        let userAvatar = null;
+        
+        try {
+          const profile = await getUserProfile(myUserId);
+          if (profile) {
+            userName = profile.name || userName;
+            userAvatar = profile.avatarUrl || userAvatar;
+          }
+        } catch (pError) {
+          console.log("發送通知前抓取個人檔案失敗:", pError);
+        }
+
+        await sendNotificationToMembers(
+          targetSpace.members, 
+          myUserId, 
+          {
+            userName: userName,
+            userAvatar: userAvatar,
+            spaceName: targetSpace.name,
+            action: editRecord ? '更新了一篇舊紀錄 📝' : '上傳了一篇新紀錄 📸'
+          }
+        );
+      }
+
       Alert.alert("成功", editRecord ? "紀錄已更新！" : "紀錄已發佈！", [
         { text: "OK", onPress: () => router.back() } 
       ]);
-      // 假設你已經成功上傳了 record，並拿到了 currentSpace (當前空間的資訊)
-// 在成功 Alert 或 router.back() 之前，加上這段：
-
-if (currentSpace && currentSpace.members && currentSpace.members.length > 0) {
-  await sendNotificationToMembers(
-    currentSpace.members, // 發給空間裡的所有人
-    myUserId,             // 扣除自己
-    {
-      userName: myProfile?.name || '神祕成員',
-      userAvatar: myProfile?.avatarUrl || null,
-      spaceName: currentSpace.name,
-      action: '上傳了一篇新紀錄' // 這裡是動作描述
-    }
-  );
-}
     } catch (error) {
       console.error(error);
       Alert.alert("失敗", `操作失敗：\n${error.message}`);
@@ -309,7 +318,6 @@ if (currentSpace && currentSpace.members && currentSpace.members.length > 0) {
           <Feather name="chevron-left" size={28} color={isUploading ? "#CCC" : "#333"} />
         </TouchableOpacity>
         <View style={styles.headerTitleContainer} pointerEvents="none">
-          {/* ✅ 標題自動跟著模式更換 */}
           <Text style={styles.title}>{editRecord ? "編輯紀錄" : "新增紀錄"}</Text>
         </View>
         <TouchableOpacity onPress={handleUpload} disabled={selectedImages.length === 0 || isUploading} style={{ zIndex: 1, padding: 5 }}>
@@ -319,7 +327,15 @@ if (currentSpace && currentSpace.members && currentSpace.members.length > 0) {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      {/* 🌟 2. 將原來的 ScrollView 替換為 KeyboardAwareScrollView，並優化參數 */}
+      <KeyboardAwareScrollView 
+        style={styles.content} 
+        showsVerticalScrollIndicator={false} 
+        keyboardShouldPersistTaps="handled"
+        enableOnAndroid={true}              // 讓 Android 也完美支援
+        enableAutomaticScroll={true}        // 開啟全自動滾動
+        extraScrollHeight={140}             // 額外拉抬高度，讓輸入欄直接保持在螢幕中央偏上位置！
+      >
         
         {selectedImages.length > 0 ? (
           <View>
@@ -414,8 +430,9 @@ if (currentSpace && currentSpace.members && currentSpace.members.length > 0) {
           <View style={{ height: 60 }} />
         </View>
 
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
+      {/* 地圖選點 Modal 保持原樣 */}
       <Modal visible={isMapModalVisible} animationType="slide">
         <SafeAreaView style={{ flex: 1, backgroundColor: '#FFF' }}>
           

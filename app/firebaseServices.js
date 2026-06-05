@@ -16,6 +16,7 @@ const generateInviteCode = () => {
 
 // 2. 創建新空間
 export const createNewSpace = async (spaceName, userId) => {
+  if (!userId) return null;
   try {
     const newCode = generateInviteCode();
     const docRef = await addDoc(collection(db, "Spaces"), {
@@ -33,6 +34,7 @@ export const createNewSpace = async (spaceName, userId) => {
 
 // 3. 加入空間
 export const joinSpaceByCode = async (code, userId) => {
+  if (!code || !userId) return null;
   try {
     const q = query(collection(db, "Spaces"), where("inviteCode", "==", code.toUpperCase()));
     const querySnapshot = await getDocs(q);
@@ -57,8 +59,9 @@ export const joinSpaceByCode = async (code, userId) => {
   }
 };
 
-// ✅ 新增：更新空間名稱
+// ✅ 更新空間名稱
 export const updateSpaceName = async (spaceId, newName) => {
+  if (!spaceId) return false;
   try {
     const spaceRef = doc(db, 'Spaces', spaceId);
     await updateDoc(spaceRef, { name: newName });
@@ -72,6 +75,7 @@ export const updateSpaceName = async (spaceId, newName) => {
 
 // 4. 監聽空間紀錄
 export const subscribeToSpaceRecords = (spaceId, callback) => {
+  if (!spaceId) return () => {};
   const q = query(collection(db, "Records"), where("spaceId", "==", spaceId));
   const unsubscribe = onSnapshot(q, (querySnapshot) => {
     const recordsData = [];
@@ -85,6 +89,7 @@ export const subscribeToSpaceRecords = (spaceId, callback) => {
 
 // 5. 監聽使用者所屬的所有空間
 export const subscribeToUserSpaces = (userId, callback) => {
+  if (!userId) return () => {};
   const q = query(collection(db, "Spaces"), where("members", "array-contains", userId));
   const unsubscribe = onSnapshot(q, (querySnapshot) => {
     const spaces = [];
@@ -97,15 +102,20 @@ export const subscribeToUserSpaces = (userId, callback) => {
 };
 
 // ✅ 6. 支援多圖網址陣列與文字存入空間
-export const addRecordToSpace = async (spaceId, imageUrls, note, location, latitude, longitude) => {
+export const addRecordToSpace = async (spaceId, imageUrls, note, location, latitude, longitude, userId) => {
+  if (!spaceId) {
+    console.warn("發布失敗：缺少目標空間 ID");
+    return;
+  }
   try {
     await addDoc(collection(db, "Records"), {
       spaceId: spaceId,
+      userId: userId || null, // 確保發文者 ID 被安全寫入
       imageUrls: imageUrls, 
       note: note || "",
       location: location || "",
-      latitude: latitude !== undefined ? latitude : null,   // 儲存緯度
-      longitude: longitude !== undefined ? longitude : null, // 儲存經度
+      latitude: latitude !== undefined ? latitude : null,   
+      longitude: longitude !== undefined ? longitude : null, 
       createdAt: Date.now()
     });
   } catch (error) {
@@ -120,7 +130,6 @@ export const uploadImageToGitHub = async (base64String, maxRetries = 3) => {
   const GITHUB_REPO = 'appimg';      
   const GITHUB_TOKEN = ''; 
 
-  // 把隨機亂碼確實組合進檔名
   const randomStr = Math.random().toString(36).substring(2, 8);
   const filename = `img_${Date.now()}_${randomStr}.jpg`;
   const url = `https://api.github.com/repos/${GITHUB_USERNAME}/${GITHUB_REPO}/contents/${filename}`;
@@ -142,19 +151,17 @@ export const uploadImageToGitHub = async (base64String, maxRetries = 3) => {
       const data = await response.json();
 
       if (response.ok) {
-        return data.content.download_url; // 成功就直接回傳網址
+        return data.content.download_url; 
       }
 
-      // 🚨 如果遇到 GitHub 經典的佇列同步延遲錯誤，進行等待並重試
       if (data.message && data.message.includes('is at') && data.message.includes('expected')) {
         console.log(`偵測到 GitHub 佇列延遲，將於 1.5 秒後進行第 ${i + 1} 次自動重試...`);
         await new Promise(resolve => setTimeout(resolve, 1500));
-        continue; // 進入下一次迴圈重試
+        continue; 
       }
 
       throw new Error(data.message);
     } catch (error) {
-      // 如果是最後一次重試也失敗了，才真正拋出錯誤
       if (i === maxRetries - 1) throw error;
       await new Promise(resolve => setTimeout(resolve, 1500));
     }
@@ -163,6 +170,7 @@ export const uploadImageToGitHub = async (base64String, maxRetries = 3) => {
 
 // ✅ 8. 更新空間專屬背景圖
 export const updateSpaceBackground = async (spaceId, imageUrl) => {
+  if (!spaceId) return;
   try {
     const spaceRef = doc(db, "Spaces", spaceId);
     await updateDoc(spaceRef, {
@@ -174,13 +182,20 @@ export const updateSpaceBackground = async (spaceId, imageUrl) => {
   }
 };
 
-// ✅ 9. 取得使用者個人資料
+// 🌟 9. 核心修正：取得使用者個人資料 (注入安全攔截閘，防止 undefined 導致發文崩潰)
 export const getUserProfile = async (userId) => {
+  // 🛡️ 超級安全鎖：如果傳進來的 userId 是空的或未定義，立刻安全回傳 null，防阻閃退！
+  if (!userId || typeof userId !== 'string') return null; 
   try {
     const docRef = doc(db, "Users", userId);
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
-      return docSnap.data();
+      const data = docSnap.data();
+      return {
+        id: docSnap.id, // 補回關鍵識別 docId
+        ...data,
+        avatarUrl: data?.avatarUrl || data?.avatar || data?.photoUrl || data?.imageUrl || null
+      };
     }
     return null;
   } catch (error) {
@@ -191,9 +206,9 @@ export const getUserProfile = async (userId) => {
 
 // ✅ 10. 更新使用者資料 (姓名、頭貼等)
 export const updateUserProfile = async (userId, data) => {
+  if (!userId) return;
   try {
     const docRef = doc(db, "Users", userId);
-    // { merge: true } 可以確保只更新傳入的欄位，不會把其他資料洗掉
     await setDoc(docRef, data, { merge: true });
   } catch (error) {
     console.error("更新使用者資料失敗:", error);
@@ -201,21 +216,20 @@ export const updateUserProfile = async (userId, data) => {
   }
 };
 
-// ✅ 新增：編輯/更新指定的紀錄
+// ✅ 編輯/更新指定的紀錄
 export const updateRecordInSpace = async (spaceId, recordId, imageUrls, note, location, latitude, longitude) => {
+  if (!recordId) return false;
   try {
-    // 取得該筆紀錄的參考位置 (假設你的資料庫結構是 spaces -> 空間ID -> records -> 紀錄ID)
     const recordRef = doc(db, 'Records', recordId);
     
-    // 執行更新
     await updateDoc(recordRef, {
       imageUrls: imageUrls,
-      imageUrl: imageUrls.length > 0 ? imageUrls[0] : null, // 為了相容舊版單圖
+      imageUrl: imageUrls.length > 0 ? imageUrls[0] : null, 
       note: note,
       location: location,
       latitude: latitude,
       longitude: longitude,
-      updatedAt: Date.now(), // 紀錄最後修改時間
+      updatedAt: Date.now(), 
     });
     
     console.log("紀錄更新成功！");
@@ -226,15 +240,12 @@ export const updateRecordInSpace = async (spaceId, recordId, imageUrls, note, lo
   }
 };
 
-// ✅ 新增：刪除指定的紀錄
+// ✅ 刪除指定的紀錄
 export const deleteRecordFromSpace = async (spaceId, recordId) => {
+  if (!recordId) return false;
   try {
-    // 找到那筆紀錄的準確地址
     const recordRef = doc(db, 'Records', recordId);
-    
-    // 呼叫 Firebase 的刪除指令
     await deleteDoc(recordRef);
-    
     console.log("紀錄刪除成功！");
     return true;
   } catch (error) {
@@ -243,11 +254,10 @@ export const deleteRecordFromSpace = async (spaceId, recordId) => {
   }
 };
 
-// ✅ 新增：把留言寫入特定紀錄的資料庫中
-// ==========================================
+// ✅ 新增留言到特定紀錄 
 export const addCommentToRecord = async (spaceId, recordId, userId, userName, text) => {
+  if (!spaceId || !recordId) return false;
   try {
-    // 建立路徑：spaces -> 空間ID -> records -> 紀錄ID -> comments
     const commentsRef = collection(db, 'spaces', spaceId, 'records', recordId, 'comments');
     await addDoc(commentsRef, {
       userId: userId,
@@ -262,12 +272,10 @@ export const addCommentToRecord = async (spaceId, recordId, userId, userName, te
   }
 };
 
-// ==========================================
-// ✅ 新增：實時訂閱該紀錄的留言（有人留完言畫面立刻跳出來）
-// ==========================================
+// ✅ 實時訂閱該紀錄的留言 
 export const subscribeToComments = (spaceId, recordId, callback) => {
+  if (!spaceId || !recordId) return () => {};
   const commentsRef = collection(db, 'spaces', spaceId, 'records', recordId, 'comments');
-  // 依時間正序排列（最早的在上面，最新的在最底下，符合聊天/留言直覺）
   const q = query(commentsRef, orderBy('createdAt', 'asc')); 
   
   return onSnapshot(q, (snapshot) => {
@@ -279,25 +287,19 @@ export const subscribeToComments = (spaceId, recordId, callback) => {
   });
 };
 
-// ==========================================
-// ✅ 通知系統 (修正變數與大小寫對齊版)
-// ==========================================
-
-// 1. 發送通知 (給空間裡的其他成員)
+// ✅ 通知系統 - 發送通知给空間成員
 export const sendNotificationToMembers = async (memberIds, senderId, notificationData) => {
   try {
     const batch = writeBatch(db); 
     
-    // 檢查 memberIds 是否真的是一個陣列，並且有內容
     if (!Array.isArray(memberIds) || memberIds.length === 0) {
         console.warn("沒有成員名單，無法發送通知");
         return;
     }
 
     memberIds.forEach(memberId => {
-      if (memberId !== senderId) {
-        // ✅ 修正點 1：將 Id 改為 memberId 
-        // ✅ 修正點 2：統一使用大寫的 'Users'
+      // 🛡️ 確保排隊發通知的成員 ID 也是合法的 string
+      if (memberId && memberId !== senderId && typeof memberId === 'string') {
         const notifRef = doc(collection(db, 'Users', memberId, 'notifications'));
         batch.set(notifRef, {
           ...notificationData,
@@ -308,17 +310,16 @@ export const sendNotificationToMembers = async (memberIds, senderId, notificatio
     });
     
     await batch.commit();
-    console.log("成功發送通知給其他成員！"); // 加這行方便看終端機
+    console.log("成功發送通知給其他成員！");
   } catch (error) {
     console.error("發送通知失敗:", error);
   }
 };
 
-// 2. 即時監聽我的通知
+// ✅ 即時監聽我的通知
 export const subscribeToMyNotifications = (userId, callback) => {
   if (!userId) return () => {};
   
-  // ✅ 確保這裡也是大寫的 'Users'
   const q = query(
     collection(db, 'Users', userId, 'notifications'), 
     orderBy('createdAt', 'desc')
@@ -328,17 +329,16 @@ export const subscribeToMyNotifications = (userId, callback) => {
     const notifs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     callback(notifs);
   }, (error) => {
-      console.error("監聽通知失敗:", error);
+    console.error("監聽通知失敗:", error);
   });
 };
 
-// 3. 把未讀通知標記為「已讀」
+// ✅ 把未讀通知標記為「已讀」
 export const markNotificationsAsRead = async (userId, unreadNotifs) => {
-  if (!unreadNotifs || unreadNotifs.length === 0) return;
+  if (!userId || !unreadNotifs || unreadNotifs.length === 0) return;
   try {
     const batch = writeBatch(db);
     unreadNotifs.forEach(notif => {
-      // ✅ 確保這裡也是大寫的 'Users'
       const notifRef = doc(db, 'Users', userId, 'notifications', notif.id);
       batch.update(notifRef, { isRead: true });
     });
@@ -348,14 +348,14 @@ export const markNotificationsAsRead = async (userId, unreadNotifs) => {
   }
 };
 
-// ✅ 取得特定空間的詳細資料 (包含成員名單)
+// ✅ 取得特定空間的詳細資料 
 export const getSpaceData = async (spaceId) => {
+  if (!spaceId) return null;
   try {
-    // 你的空間資料夾叫大寫的 "Spaces"
     const spaceRef = doc(db, "Spaces", spaceId);
     const docSnap = await getDoc(spaceRef);
     if (docSnap.exists()) {
-      return docSnap.data();
+      return { id: docSnap.id, ...docSnap.data() };
     }
     return null;
   } catch (error) {
