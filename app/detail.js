@@ -67,16 +67,26 @@ useEffect(() => {
 
       // 如果沒有資料就建立預設帳號
       if (!profile) {
-        profile = {
-          name: `成員_${storedId.slice(-4)}`,
-          avatarUrl: "https://api.dicebear.com/7.x/bottts/png",
-          isOnline: true,
-          createdAt: Date.now()
-        };
+  const defaultAvatars = [
+    "https://github.com/jael1118/appimg/blob/4b73a09cc6a2ee1195e5a5ee981411983f5a48c2/img_1780773969404_9wnp6d.jpg",
+    "https://github.com/jael1118/appimg/blob/4b73a09cc6a2ee1195e5a5ee981411983f5a48c2/img_1780773970686_9xxhpq.jpg",
+    "https://github.com/jael1118/appimg/blob/4b73a09cc6a2ee1195e5a5ee981411983f5a48c2/img_1780773971807_vchtqx.jpg",
+  ];
+  const randomIndex = Math.floor(Math.random() * defaultAvatars.length);
 
-        await updateUserProfile(storedId, profile);
-      }
+  // 1. 在記憶體裡填好表格
+  profile = {
+    name: "美麗陌生人", 
+    avatarUrl: defaultAvatars[randomIndex], 
+    isOnline: true,
+    createdAt: Date.now()
+  };
 
+  // 2. 🌟 送交櫃檯存檔！(這行絕對不能刪)
+  await updateUserProfile(storedId, profile);
+}
+
+      
       // ⭐⭐ 最重要的一行
       setMyProfile(profile);
 
@@ -255,6 +265,16 @@ useEffect(() => {
   const rawMyAvatar = myProfile?.avatarUrl || userProfiles[myUserId] || null;
   const finalMyAvatar = (typeof rawMyAvatar === 'string' && rawMyAvatar.trim() !== '') ? rawMyAvatar : null;
 
+  const getMoodImage = (moodId) => {
+  switch (moodId) {
+    case 0: return require('../assets/1.jpg');
+    case 1: return require('../assets/2.jpg');
+    case 2: return require('../assets/3.jpg');
+    case 3: return require('../assets/4.jpg');
+    case 4: return require('../assets/5.jpg');
+    default: return null;
+  }
+};
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
@@ -347,6 +367,12 @@ useEffect(() => {
               {tags.map((tag, index) => (
                 <View key={index} style={styles.tagBadge}><Text style={styles.tagText}>#{tag}</Text></View>
               ))}
+            </View>
+          )}
+          {record.mood !== undefined && record.mood !== null && (
+            <View style={styles.detailMoodWrapper}>
+              <Image source={getMoodImage(record.mood)} style={styles.detailMoodImage} resizeMode="contain" />
+              <Text style={styles.detailMoodText}>今天覺得...</Text>
             </View>
           )}
 
@@ -473,4 +499,25 @@ const styles = StyleSheet.create({
   commentBubble: { flex: 1, backgroundColor: '#F5F5F5', borderRadius: 6, padding: 12, borderWidth: 1, borderColor: '#EAEAEA' },
   commenterNameText: { fontSize: 12, fontWeight: '700', color: '#111', marginBottom: 4 },
   commentBubbleText: { fontSize: 14, color: '#333', lineHeight: 20 },
+  noteText: { fontSize: 15, lineHeight: 26, color: '#333' },
+  
+  // 🌟 補上這三段樣式
+  detailMoodWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F9F9F9',
+    padding: 10,
+    borderRadius: 12,
+    marginBottom: 15, // 跟下面的內文隔開
+  },
+  detailMoodImage: {
+    width: 45,
+    height: 45,
+    marginRight: 12,
+  },
+  detailMoodText: {
+    fontSize: 14,
+    color: '#888',
+    fontWeight: '500',
+  },
 });

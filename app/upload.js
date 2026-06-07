@@ -2,9 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   StyleSheet, Text, View, SafeAreaView, TouchableOpacity, 
   TextInput, Image, Alert, StatusBar, Modal, Keyboard, Platform,
-  Dimensions, FlatList, ScrollView // 💡 保留這裡的 ScrollView，因為下方的空間選取器需要橫向滾動
+  Dimensions, FlatList, ScrollView 
 } from 'react-native';
-// 🌟 1. 引入全自動避開鍵盤的滾動組件
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -55,6 +54,22 @@ export default function UploadScreen() {
     latitudeDelta: 0.01,
     longitudeDelta: 0.01
   });
+
+  // 加上這行：用來記錄選中的心情 (0~4 代表 5 個表情，null 代表沒選)
+  const [selectedMood, setSelectedMood] = useState(null);
+
+  // 定義你的 5 張心情圖片 (⚠️ 請確認你的圖片名稱和路徑是對的，如果是放在 assets 裡的話)
+  const moodOptions = [
+    { id: 0, source: require('../assets/1.jpg') },
+    { id: 1, source: require('../assets/2.jpg') },
+    { id: 2, source: require('../assets/3.jpg') },
+    { id: 3, source: require('../assets/4.jpg') },
+    { id: 4, source: require('../assets/5.jpg') },
+  ];
+
+  // ✅ 檢查目前欄位是否有任何內容 (有照片 OR 有打字)
+  const combinedNote = notes.filter(n => n.trim() !== '').join('\n');
+  const hasContent = selectedImages.length > 0 || combinedNote.trim() !== ''|| selectedMood !== null;
 
   useEffect(() => {
     const initialize = async () => {
@@ -211,21 +226,28 @@ export default function UploadScreen() {
   };
 
   const handleUpload = async () => {
-    if (selectedImages.length === 0 || !uploadTargetSpaceId) return;
+    // ✅ 修正限制：只要有內容 (照片或文字選一) 且有選擇空間，就可以發佈
+    if (!hasContent || !uploadTargetSpaceId) {
+      Alert.alert("提示", "請輸入文字或選擇照片再發佈喔！");
+      return;
+    }
     
     setIsUploading(true);
     try {
       const cloudImageUrls = [];
       let base64Idx = 0;
       
-      for (const uri of selectedImages) {
-        if (uri.startsWith('http')) {
-          cloudImageUrls.push(uri);
-        } else {
-          const base64 = selectedImagesBase64[base64Idx++];
-          if (base64) {
-            const url = await uploadImageToGitHub(base64);
-            cloudImageUrls.push(url);
+      // 如果有選擇照片才跑上傳圖床迴圈
+      if (selectedImages.length > 0) {
+        for (const uri of selectedImages) {
+          if (uri.startsWith('http')) {
+            cloudImageUrls.push(uri);
+          } else {
+            const base64 = selectedImagesBase64[base64Idx++];
+            if (base64) {
+              const url = await uploadImageToGitHub(base64);
+              cloudImageUrls.push(url);
+            }
           }
         }
       }
@@ -233,12 +255,11 @@ export default function UploadScreen() {
       const combinedNote = notes.filter(n => n.trim() !== '').join('\n');
             
       if (editRecord) {
-        await updateRecordInSpace(uploadTargetSpaceId, editRecord.id, cloudImageUrls, combinedNote, location, latitude, longitude);
+        await updateRecordInSpace(uploadTargetSpaceId, editRecord.id, cloudImageUrls, combinedNote, location, latitude, longitude, selectedMood);
       } else {
-        await addRecordToSpace(uploadTargetSpaceId, cloudImageUrls, combinedNote, location, latitude, longitude, myUserId);
+        await addRecordToSpace(uploadTargetSpaceId, cloudImageUrls, combinedNote, location, latitude, longitude, myUserId, selectedMood);
       }
       
-      // 🌟 安全的成員通知發送邏輯
       const targetSpace = mySpaces.find(s => s.id === uploadTargetSpaceId);
       if (targetSpace && targetSpace.members && targetSpace.members.length > 0) {
         let userName = '神祕成員';
@@ -254,6 +275,14 @@ export default function UploadScreen() {
           console.log("發送通知前抓取個人檔案失敗:", pError);
         }
 
+        // ✅ 精細化通知文字：區分「新紀錄」、「純文字動態」、「更新」
+        let actionText = '';
+        if (editRecord) {
+          actionText = '更新了一篇舊紀錄 📝';
+        } else {
+          actionText = selectedImages.length > 0 ? '上傳了一篇新紀錄 📸' : '發表了一則純文字心情 ✍️';
+        }
+
         await sendNotificationToMembers(
           targetSpace.members, 
           myUserId, 
@@ -261,7 +290,7 @@ export default function UploadScreen() {
             userName: userName,
             userAvatar: userAvatar,
             spaceName: targetSpace.name,
-            action: editRecord ? '更新了一篇舊紀錄 📝' : '上傳了一篇新紀錄 📸'
+            action: actionText
           }
         );
       }
@@ -320,21 +349,21 @@ export default function UploadScreen() {
         <View style={styles.headerTitleContainer} pointerEvents="none">
           <Text style={styles.title}>{editRecord ? "編輯紀錄" : "新增紀錄"}</Text>
         </View>
-        <TouchableOpacity onPress={handleUpload} disabled={selectedImages.length === 0 || isUploading} style={{ zIndex: 1, padding: 5 }}>
-          <Text style={[styles.publishBtnText, (selectedImages.length > 0 && !isUploading) ? styles.publishBtnActive : null]}>
+        {/* ✅ 按鈕啟用邏輯修改：只要有內容 (hasContent) 且沒在儲存中，就亮起藍色並可點擊 */}
+        <TouchableOpacity onPress={handleUpload} disabled={!hasContent || isUploading} style={{ zIndex: 1, padding: 5 }}>
+          <Text style={[styles.publishBtnText, (hasContent && !isUploading) ? styles.publishBtnActive : null]}>
             {isUploading ? "處理中" : (editRecord ? "儲存" : "發佈")}
           </Text>
         </TouchableOpacity>
       </View>
 
-      {/* 🌟 2. 將原來的 ScrollView 替換為 KeyboardAwareScrollView，並優化參數 */}
       <KeyboardAwareScrollView 
         style={styles.content} 
         showsVerticalScrollIndicator={false} 
         keyboardShouldPersistTaps="handled"
-        enableOnAndroid={true}              // 讓 Android 也完美支援
-        enableAutomaticScroll={true}        // 開啟全自動滾動
-        extraScrollHeight={140}             // 額外拉抬高度，讓輸入欄直接保持在螢幕中央偏上位置！
+        enableOnAndroid={true}              
+        enableAutomaticScroll={true}        
+        extraScrollHeight={140}             
       >
         
         {selectedImages.length > 0 ? (
@@ -371,10 +400,11 @@ export default function UploadScreen() {
             )}
           </View>
         ) : (
+          /* ✅ 修改相機預設區塊：微調提示文字，讓使用者知道「不選照片也可以」 */
           <TouchableOpacity style={styles.imageSection} onPress={pickImage}>
             <View style={styles.imageUploadPlaceholder}>
               <Feather name="camera" size={40} color="#999" />
-              <Text style={styles.imageUploadText}>點擊選擇照片 (最多 10 張)</Text>
+              <Text style={styles.imageUploadText}>點擊選擇照片</Text>
             </View>
           </TouchableOpacity>
         )}
@@ -392,6 +422,35 @@ export default function UploadScreen() {
             </Text>
             <Feather name="chevron-right" size={18} color="#666" />
           </TouchableOpacity>
+
+          <View style={styles.moodSelectorContainer}>
+            <Text style={styles.moodTitle}>今天的心情：</Text>
+            <View style={styles.moodIconsWrapper}>
+              {moodOptions.map((mood) => {
+                const isSelected = selectedMood === mood.id;
+                return (
+                  <TouchableOpacity
+                    key={mood.id}
+                    onPress={() => setSelectedMood(isSelected ? null : mood.id)} // 點選中，再點一次可取消
+                    activeOpacity={0.6}
+                  >
+                    <Image 
+                      source={mood.source} 
+                      style={[
+                        styles.moodIconImage,
+                        // 如果沒被選中，就變半透明；選中的話就恢復 100% 顯示，並加上一點點放大效果
+                        { 
+                          opacity: isSelected ? 1 : 0.3,
+                          transform: [{ scale: isSelected ? 1.1 : 1 }]
+                        }
+                      ]} 
+                      resizeMode="contain"
+                    />
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
 
           <View style={styles.inputContainer}>
             {notes.map((noteText, index) => (
@@ -432,7 +491,7 @@ export default function UploadScreen() {
 
       </KeyboardAwareScrollView>
 
-      {/* 地圖選點 Modal 保持原樣 */}
+      {/* 地圖選點 Modal */}
       <Modal visible={isMapModalVisible} animationType="slide">
         <SafeAreaView style={{ flex: 1, backgroundColor: '#FFF' }}>
           
@@ -541,66 +600,59 @@ const styles = StyleSheet.create({
   title: { fontSize: 18, fontWeight: '600', color: '#333' },
   publishBtnText: { fontSize: 16, fontWeight: '600', color: '#CCC' },
   publishBtnActive: { color: '#007AFF' },
-  
   content: { flex: 1 }, 
-  
   imageSection: { width: windowWidth, height: windowWidth, backgroundColor: '#D9D9D9' },
   mainImage: { width: windowWidth, height: windowWidth },
-  
-  imageUploadPlaceholder: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  imageUploadText: { color: '#999', marginTop: 10, fontSize: 16 },
-
+  imageUploadPlaceholder: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 40 },
+  imageUploadText: { color: '#999', marginTop: 10, fontSize: 14, textAlign: 'center', lineHeight: 20 },
   floatingReselectBtn: { position: 'absolute', bottom: 15, right: 15, backgroundColor: 'rgba(0,0,0,0.6)', width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
-  
   dotsContainer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 12, marginBottom: 5 },
   dot: { width: 6, height: 6, borderRadius: 3, marginHorizontal: 4 },
-
   formContainer: { paddingHorizontal: 20, paddingTop: 10 },
-
   locationRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderColor: '#EAEAEA', marginBottom: 15 },
   locationTextDisplay: { flex: 1, fontSize: 16, color: '#333', marginLeft: 12 },
-
   inputContainer: { marginBottom: 30, borderBottomWidth: 1, borderColor: '#EAEAEA', paddingBottom: 10 },
   dynamicTextInput: { fontSize: 16, lineHeight: 28, color: '#333', minHeight: 28, textAlignVertical: 'center', marginBottom: 2 },
-  
   sectionTitle: { fontSize: 14, color: '#666', marginBottom: 10, fontWeight: '500' },
   spaceSelector: { flexDirection: 'row' },
   spaceChip: { paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#E0E0E0', marginRight: 10 },
   spaceChipActive: { backgroundColor: '#333', borderColor: '#333' },
   spaceChipText: { color: '#666', fontWeight: '600' },
-
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 15, height: 55, borderBottomWidth: 1, borderColor: '#F0F0F0' },
   modalTitleContainer: { position: 'absolute', left: 0, right: 0, alignItems: 'center', justifyContent: 'center', zIndex: 0 },
   modalTitle: { fontSize: 16, fontWeight: '600', color: '#333' },
   modalConfirmBtn: { backgroundColor: '#333', paddingHorizontal: 15, paddingVertical: 6, borderRadius: 15 },
   modalConfirmBtnText: { color: '#FFF', fontSize: 13, fontWeight: '600' },
-  
   mapSearchBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F5F5F5', borderRadius: 10, margin: 12, paddingHorizontal: 12, height: 44 },
   mapSearchInput: { flex: 1, fontSize: 15, color: '#333', padding: 0 },
   mapSearchIcon: { padding: 5 },
-
   centerPinContainer: { position: 'absolute', top: '50%', left: '50%', marginLeft: -18, marginTop: -36, alignItems: 'center', justifyContent: 'center', zIndex: 10 },
   centerPinShadow: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(0,0,0,0.3)', marginTop: -2 },
-
   searchOverlayMask: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.2)', zIndex: 998 },
-  
-  searchResultsContainer: { 
-    position: 'absolute', 
-    top: 5, 
-    left: 12, 
-    right: 12, 
-    backgroundColor: '#FFFFFF', 
-    borderRadius: 10, 
-    maxHeight: 250, 
-    zIndex: 999, 
-    shadowColor: '#000', 
-    shadowOffset: { width: 0, height: 4 }, 
-    shadowOpacity: 0.15, 
-    shadowRadius: 8, 
-    elevation: 5,
-    borderWidth: 1,
+  searchResultsContainer: { position: 'absolute', top: 5, left: 12, right: 12, backgroundColor: '#FFFFFF', borderRadius: 10, maxHeight: 250, zIndex: 999, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 5, borderWidth: 1, borderColor: '#EAEAEA' },
+  searchResultItem: { flexDirection: 'row', alignItems: 'center', padding: 14, borderBottomWidth: 1, borderBottomColor: '#F5F5F5' },
+  searchResultText: { fontSize: 13, color: '#666', flex: 1, lineHeight: 20 },
+  // 🌟 心情選擇列的樣式
+  moodSelectorContainer: { 
+    marginBottom: 20, // 跟下面的內文保持一點距離
+    paddingVertical: 10,
+    borderBottomWidth: 1, 
     borderColor: '#EAEAEA'
   },
-  searchResultItem: { flexDirection: 'row', alignItems: 'center', padding: 14, borderBottomWidth: 1, borderBottomColor: '#F5F5F5' },
-  searchResultText: { fontSize: 13, color: '#666', flex: 1, lineHeight: 20 }
+  moodTitle: {
+    fontSize: 14, 
+    color: '#666', 
+    marginBottom: 12, 
+    fontWeight: '500'
+  },
+  moodIconsWrapper: {
+    flexDirection: 'row',
+    justifyContent: 'space-between', // 讓五個表情平均分散
+    alignItems: 'center',
+    paddingHorizontal: 10,
+  },
+  moodIconImage: {
+    width: 40,  // 設定表情圖片的大小，你可以依據你畫的圖調整
+    height: 40,
+  },
 });

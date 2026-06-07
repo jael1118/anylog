@@ -102,7 +102,7 @@ export const subscribeToUserSpaces = (userId, callback) => {
 };
 
 // ✅ 6. 支援多圖網址陣列與文字存入空間
-export const addRecordToSpace = async (spaceId, imageUrls, note, location, latitude, longitude, userId) => {
+export const addRecordToSpace = async (spaceId, imageUrls, note, location, latitude, longitude, userId, mood) => {
   if (!spaceId) {
     console.warn("發布失敗：缺少目標空間 ID");
     return;
@@ -116,6 +116,7 @@ export const addRecordToSpace = async (spaceId, imageUrls, note, location, latit
       location: location || "",
       latitude: latitude !== undefined ? latitude : null,   
       longitude: longitude !== undefined ? longitude : null, 
+      mood: mood !== undefined ? mood : null,
       createdAt: Date.now()
     });
   } catch (error) {
@@ -217,7 +218,7 @@ export const updateUserProfile = async (userId, data) => {
 };
 
 // ✅ 編輯/更新指定的紀錄
-export const updateRecordInSpace = async (spaceId, recordId, imageUrls, note, location, latitude, longitude) => {
+export const updateRecordInSpace = async (spaceId, recordId, imageUrls, note, location, latitude, longitude, mood) => {
   if (!recordId) return false;
   try {
     const recordRef = doc(db, 'Records', recordId);
@@ -229,6 +230,7 @@ export const updateRecordInSpace = async (spaceId, recordId, imageUrls, note, lo
       location: location,
       latitude: latitude,
       longitude: longitude,
+      mood: mood !== undefined ? mood : null,
       updatedAt: Date.now(), 
     });
     

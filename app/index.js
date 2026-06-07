@@ -8,7 +8,7 @@ import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { subscribeToUserSpaces, createNewSpace, getUserProfile, joinSpaceByCode, subscribeToMyNotifications } from './firebaseServices'; 
+import { subscribeToUserSpaces, createNewSpace, getUserProfile, joinSpaceByCode, subscribeToMyNotifications, updateUserProfile } from './firebaseServices'; 
 
 export default function SpaceListScreen() {
   const router = useRouter();
@@ -44,6 +44,27 @@ export default function SpaceListScreen() {
         await AsyncStorage.setItem('@my_device_user_id', storedId);
       }
       setMyUserId(storedId);
+      let profile = await getUserProfile(storedId);
+      
+      // 3. 如果資料庫沒有檔案（代表是全新成員），立刻幫他建立預設資料！
+      if (!profile) {
+        const defaultAvatars = [
+          "https://github.com/jael1118/appimg/blob/main/img_1780773971807_vchtqx.jpg?raw=true",
+    "https://github.com/jael1118/appimg/blob/main/img_1780773970686_9xxhpq.jpg?raw=true",
+    "https://github.com/jael1118/appimg/blob/main/img_1780773969404_9wnp6d.jpg?raw=true"
+        ];
+        const randomIndex = Math.floor(Math.random() * defaultAvatars.length);
+
+        const newProfile = {
+          name: "美麗陌生人", 
+          avatarUrl: defaultAvatars[randomIndex], 
+          isOnline: true,
+          createdAt: Date.now()
+        };
+        
+        // 存進資料庫
+        await updateUserProfile(storedId, newProfile);
+      }
     };
     initialize();
   }, []);
@@ -145,7 +166,7 @@ export default function SpaceListScreen() {
               return (
                 <View key={index} style={[styles.avatarWrapper, index > 0 && { marginLeft: 8 }]}>
                   {avatarUrl ? (
-                    <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
+                    <Image source={{ uri: item.avatarUrl }} style={styles.avatarImage} />
                   ) : (
                     <Feather name="user" size={16} color="#FFF" />
                   )}

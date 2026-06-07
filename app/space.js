@@ -194,42 +194,82 @@ export default function App() {
     const targetUid = item.userId || item.creatorId || item.uid || item.authorId;
     const postCreator = memberProfiles.find(m => m.id === targetUid);
     const realAvatarUrl = postCreator?.avatarUrl || item.userAvatar || item.avatarUrl || null;
+// ✅ 判斷這篇貼文有沒有文字
+const hasNote = item.note && item.note.trim().length > 0;
+// 在檔案上方（元件外面或裡面都可以）準備好這個陣列：
+const getMoodImage = (moodId) => {
+  switch (moodId) {
+    case 0: return require('../assets/1.jpg');
+    case 1: return require('../assets/2.jpg');
+    case 2: return require('../assets/3.jpg');
+    case 3: return require('../assets/4.jpg');
+    case 4: return require('../assets/5.jpg');
+    default: return null;
+  }
+};
 
-    return (
-      <TouchableOpacity 
-        key={item.id}
-        style={styles.imageGrid}
-        activeOpacity={0.8}
-        onPress={() => {
-          router.push({
-            pathname: '/detail',
-            params: { record: JSON.stringify(item) }
-          });
-        }}
-      >
-        {firstImage ? (
-          <>
-            <Image source={{ uri: firstImage }} style={styles.recordImage} resizeMode="cover" />
-            {isMultiple && (
-              <View style={styles.multipleIcon}>
-                <Feather name="layers" size={14} color="white" />
-              </View>
-            )}
-            <View style={styles.postCreatorAvatarContainer}>
-              {realAvatarUrl ? (
-                <Image source={{ uri: realAvatarUrl }} style={styles.postCreatorAvatar} />
-              ) : (
-                <View style={styles.postCreatorAvatarPlaceholder}>
-                  <Feather name="user" size={10} color="#FFF" />
-                </View>
-              )}
-            </View>
-          </>
-        ) : (
-          <View style={styles.placeholderGrid} />
+return (
+  <TouchableOpacity 
+    key={item.id}
+    style={styles.imageGrid}
+    activeOpacity={0.8}
+    onPress={() => {
+      router.push({
+        pathname: '/detail',
+        params: { record: JSON.stringify(item) }
+      });
+    }}
+  >
+    {firstImage ? (
+      // 🌟 情況 A：有圖片 (維持你原本的完美設計)
+      <>
+        <Image source={{ uri: firstImage }} style={styles.recordImage} resizeMode="cover" />
+        {isMultiple && (
+          <View style={styles.multipleIcon}>
+            <Feather name="layers" size={14} color="white" />
+          </View>
         )}
-      </TouchableOpacity>
-    );
+        <View style={styles.postCreatorAvatarContainer}>
+          {realAvatarUrl ? (
+            <Image source={{ uri: realAvatarUrl }} style={styles.postCreatorAvatar} />
+          ) : (
+            <View style={styles.postCreatorAvatarPlaceholder}>
+              <Feather name="user" size={10} color="#FFF" />
+            </View>
+          )}
+        </View>
+      </>
+    ) : (
+      // 🌟 情況 B：沒有圖片，顯示「純文字/心情小卡」
+      <View style={[styles.recordImage, styles.pureTextGrid]}>
+        
+        {/* 1. 插圖/Icon (如果組員有畫圖片，可以把 Feather 換成 <Image source={require('組員的圖.png')} />) */}
+        {item.mood !== undefined && item.mood !== null ? (
+          <Image source={getMoodImage(item.mood)} style={[styles.moodIcon, { width: 40, height: 40 }]} resizeMode="contain" />
+        ) : (
+          <Feather name="message-square" size={26} color="#D4D4D4" style={styles.moodIcon} />
+        )}
+        
+        {/* 2. 顯示文字預覽 (最多顯示 3 行，超過會變成 ...) */}
+        <Text style={styles.pureTextContent} numberOfLines={3}>
+          {hasNote ? item.note : "分享了新動態"}
+        </Text>
+
+        {/* 3. 一樣保留大頭貼，讓整體版面跟有照片的一致！ */}
+        <View style={styles.postCreatorAvatarContainer}>
+          {realAvatarUrl ? (
+            <Image source={{ uri: realAvatarUrl }} style={styles.postCreatorAvatar} />
+          ) : (
+            <View style={styles.postCreatorAvatarPlaceholder}>
+              <Feather name="user" size={10} color="#FFF" />
+            </View>
+          )}
+        </View>
+
+      </View>
+    )}
+  </TouchableOpacity>
+);
   };
 
   const renderMonthSection = ({ item }) => {
@@ -572,5 +612,27 @@ const styles = StyleSheet.create({
   inviteCodeText: { fontSize: 32, fontWeight: '900', letterSpacing: 5, color: '#333' },
   memberListItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
   memberListAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#CCC', justifyContent: 'center', alignItems: 'center', marginRight: 15, overflow: 'hidden' },
-  memberListText: { fontSize: 16, color: '#333', fontWeight: '500' }
+  memberListText: { fontSize: 16, color: '#333', fontWeight: '500' },
+  // ✅ 純文字/心情小卡的底圖樣式
+  pureTextGrid: {
+    backgroundColor: '#F7F8FA', // 淡淡的質感灰底色
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#EFEFEF', // 加一點微弱的邊框看起來像小卡片
+  },
+  // ✅ 裡面的 Icon 或插圖樣式
+  moodIcon: {
+    marginBottom: 8,
+    opacity: 0.8,
+  },
+  // ✅ 文字預覽樣式
+  pureTextContent: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 16,
+    paddingHorizontal: 4,
+  },
 });
