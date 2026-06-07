@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   StyleSheet, Text, View, FlatList, SafeAreaView,
   TouchableOpacity, Dimensions, StatusBar, Modal, TextInput, Image, Alert, ScrollView,
-  ActivityIndicator, Animated, Platform
+  ActivityIndicator, Animated, Platform, AppState
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage'; 
@@ -13,7 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { 
   joinSpaceByCode, subscribeToSpaceRecords, createNewSpace, 
   subscribeToUserSpaces, uploadImageToGitHub, updateSpaceBackground, getUserProfile,
-  updateSpaceName 
+  updateSpaceName, updateUserLastActive
 } from './firebaseServices'; 
 
 const { width: windowWidth, height: windowHeight } = Dimensions.get('window');
@@ -45,6 +45,38 @@ export default function App() {
   const [editSpaceName, setEditSpaceName] = useState('');
 
   const scrollY = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+  if (!myUserId) return;
+
+  // 定義發送心跳的動作
+  const sendHeartbeat = () => {
+    // updateUserLastActive 是我們等下要在 firebaseServices 加的函式
+    updateUserLastActive(myUserId); 
+  };
+
+  // 一進來先發送一次
+  sendHeartbeat();
+
+  // 每 1 分鐘 (60000 毫秒) 發送一次心跳
+  const heartbeatInterval = setInterval(() => {
+    if (AppState.currentState === 'active') {
+      sendHeartbeat();
+    }
+  }, 60000);
+
+  // 監聽 App 退到背景或回到前景
+  const subscription = AppState.addEventListener('change', (nextAppState) => {
+    if (nextAppState === 'active') {
+      sendHeartbeat(); // 回到前景立刻更新一次
+    }
+  });
+
+  return () => {
+    clearInterval(heartbeatInterval);
+    subscription.remove();
+  };
+}, [myUserId]);
 
   useEffect(() => {
     const initializeUser = async () => {
@@ -89,6 +121,8 @@ export default function App() {
     const fetchMembers = async () => {
       if (currentSpace && currentSpace.members && currentSpace.members.length > 0) {
         try {
+          const now = Date.now();
+          const ONLINE_THRESHOLD = 3 * 60 * 1000;
           const profiles = await Promise.all(
             currentSpace.members.map(async (id) => {
               const profile = await getUserProfile(id);
@@ -96,7 +130,7 @@ export default function App() {
                 id: id,
                 name: profile?.name || '空間成員',
                 avatarUrl: profile?.avatarUrl || null,
-                isOnline: id === myUserId ? true : (profile?.isOnline || false)
+                isOnline: id === myUserId ? true : (profile?.lastActive ? (now - profile.lastActive < ONLINE_THRESHOLD) : false)
               };
             })
           );
@@ -108,7 +142,19 @@ export default function App() {
         setMemberProfiles([]);
       }
     };
+    // 1. 畫面剛載入時，先立刻抓取一次
     fetchMembers();
+
+    // 2. 🌟 新增：每 30 秒自動重新抓取一次大家的狀態
+    // 這樣別人的 lastActive 更新時，這邊的畫面才會跟著變綠燈！
+    const refreshInterval = setInterval(() => {
+      fetchMembers();
+    }, 30000); 
+
+    // 3. 清理定時器
+    return () => {
+      clearInterval(refreshInterval);
+    };
   }, [membersKey, myUserId]);
 
   useEffect(() => {

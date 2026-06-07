@@ -396,3 +396,17 @@ export const deleteSpace = async (spaceId) => {
     throw error;
   }
 };
+
+export const updateUserLastActive = async (userId) => {
+  try {
+    const userRef = doc(db, 'Users', userId);
+    
+    // 🌟 換成 setDoc，並加上 { merge: true }
+    await setDoc(userRef, {
+      lastActive: Date.now()
+    }, { merge: true }); 
+    
+  } catch (error) {
+    console.error("更新最後活躍時間失敗:", error);
+  }
+};

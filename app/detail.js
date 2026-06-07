@@ -203,6 +203,10 @@ useEffect(() => {
   };
 
   const handleDelete = () => {
+    if (myUserId !== authorId) {
+      Alert.alert("權限不足", "只有紀錄的作者可以刪除喔！");
+      return;
+    }
     setIsMenuVisible(false);
     Alert.alert(
       "刪除紀錄", 
@@ -306,6 +310,7 @@ useEffect(() => {
         </View>
 
         <View style={styles.headerRightIcons}>
+          {myUserId === authorId && (
           <TouchableOpacity 
             style={styles.iconCircleBtn} 
             onPress={() => {
@@ -317,6 +322,7 @@ useEffect(() => {
           >
             <Feather name="edit-2" size={18} color="#333" />
           </TouchableOpacity>
+          )}
 
           <TouchableOpacity style={styles.iconCircleBtn} onPress={() => setIsMenuVisible(true)}>
             <Feather name="more-horizontal" size={18} color="#333" />
@@ -456,11 +462,14 @@ useEffect(() => {
                 <Feather name="share" size={18} color="#333" />
                 <Text style={styles.menuItemText}>分享</Text>
               </TouchableOpacity>
+              {myUserId === authorId && (<>
               <View style={styles.menuDivider} />
               <TouchableOpacity style={styles.menuItem} onPress={handleDelete}>
                 <Feather name="trash-2" size={18} color="#FF3B30" />
                 <Text style={[styles.menuItemText, { color: '#FF3B30' }]}>刪除</Text>
               </TouchableOpacity>
+              </>
+              )}
             </View>
           </SafeAreaView>
         </TouchableOpacity>

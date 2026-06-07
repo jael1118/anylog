@@ -60,7 +60,7 @@ useEffect(() => {
       const sortedSpaces = [...spaces].sort((a, b) => {
         const timeA = a.createdAt || 0;
         const timeB = b.createdAt || 0;
-        return timeB - timeA;
+        return timeA - timeB;
       });
       setMySpaces(sortedSpaces);
     });

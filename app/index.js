@@ -31,7 +31,7 @@ export default function SpaceListScreen() {
       const sortedSpaces = [...fetchedSpaces].sort((a, b) => {
         const timeA = a.createdAt || 0;
         const timeB = b.createdAt || 0;
-        return timeB - timeA; 
+        return timeA - timeB; 
       });
       setSpaces(sortedSpaces);
     });
@@ -172,7 +172,7 @@ export default function SpaceListScreen() {
               return (
                 <View key={index} style={[styles.avatarWrapper, index > 0 && { marginLeft: 8 }]}>
                   {avatarUrl ? (
-                    <Image source={{ uri: item.avatarUrl }} style={styles.avatarImage} />
+                    <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
                   ) : (
                     <Feather name="user" size={16} color="#FFF" />
                   )}
