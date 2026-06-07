@@ -17,6 +17,8 @@ import {
 const windowWidth = Dimensions.get('window').width;
 
 export default function DetailScreen() {
+  // 🌟 新增這行：用來手動操控 KeyboardAwareScrollView
+  const keyboardScrollRef = useRef(null);
   const router = useRouter();
   const { record: recordString } = useLocalSearchParams();
   
@@ -324,13 +326,14 @@ useEffect(() => {
 
       {/* 🌟 2. 核心修改：移除舊的 KeyboardAvoidingView，全面置換為 KeyboardAwareScrollView 外殼 */}
       <KeyboardAwareScrollView 
+        ref={keyboardScrollRef}
         style={{ flex: 1 }} 
         contentContainerStyle={{ paddingBottom: 140 }} 
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         enableOnAndroid={true}              // 完美適配 Android
         enableAutomaticScroll={true}        // 啟用自動跟隨滾動
-        extraScrollHeight={140}             // 關鍵拉抬：打字時自動把整條留言欄送到中央位置
+        extraHeight={160}             // 關鍵拉抬：打字時自動把整條留言欄送到中央位置
       >
         <View style={styles.imageSection}>
           {images.length > 0 ? (
@@ -396,6 +399,16 @@ useEffect(() => {
                 value={commentText}
                 onChangeText={setCommentText}
                 multiline={true}
+                onFocus={(e) => {
+                  // 抓取當前點擊的輸入框實體
+                  const targetNode = e.target || e.nativeEvent.target; 
+                  
+                  setTimeout(() => {
+                    if (keyboardScrollRef.current && targetNode) {
+                      keyboardScrollRef.current.scrollToFocusedInput(targetNode);
+                    }
+                  }, 50); 
+                }}
               />
               {commentText.length > 0 && (
                 <TouchableOpacity onPress={handleSendComment} style={{ padding: 5 }}>
