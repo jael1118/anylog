@@ -53,10 +53,16 @@ export default function ProfileScreen() {
     initialize();
   }, []);
 
-  useEffect(() => {
+useEffect(() => {
     if (!myUserId) return;
     const unsubscribe = subscribeToUserSpaces(myUserId, (spaces) => {
-      setMySpaces(spaces);
+      // 🌟 複製一份並排序：把最新建立的排在最前面 (由大排到小)
+      const sortedSpaces = [...spaces].sort((a, b) => {
+        const timeA = a.createdAt || 0;
+        const timeB = b.createdAt || 0;
+        return timeB - timeA;
+      });
+      setMySpaces(sortedSpaces);
     });
     return () => unsubscribe();
   }, [myUserId]);
