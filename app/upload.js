@@ -254,10 +254,28 @@ export default function UploadScreen() {
       
       const combinedNote = notes.filter(n => n.trim() !== '').join('\n');
             
+      // ✅ 1. 準備一個變數來接住「紀錄的 ID」
+      let currentRecordId = editRecord ? editRecord.id : null;
+      
       if (editRecord) {
         await updateRecordInSpace(uploadTargetSpaceId, editRecord.id, cloudImageUrls, combinedNote, location, latitude, longitude, selectedMood);
       } else {
-        await addRecordToSpace(uploadTargetSpaceId, cloudImageUrls, combinedNote, location, latitude, longitude, myUserId, selectedMood);
+        // ✅ 2. 這裡原本是 addRecordToSpace，我們要把它拆開，手動取得新建立的 ID
+        const { collection, addDoc } = require('firebase/firestore');
+        const { db } = require('./firebaseConfig');
+        
+        const newRecordRef = await addDoc(collection(db, "Records"), {
+          spaceId: uploadTargetSpaceId,
+          userId: myUserId || null, 
+          imageUrls: cloudImageUrls, 
+          note: combinedNote || "",
+          location: location || "",
+          latitude: latitude !== undefined ? latitude : null,   
+          longitude: longitude !== undefined ? longitude : null, 
+          mood: selectedMood !== undefined ? selectedMood : null,
+          createdAt: Date.now()
+        });
+        currentRecordId = newRecordRef.id;
       }
       
       const targetSpace = mySpaces.find(s => s.id === uploadTargetSpaceId);
@@ -275,13 +293,26 @@ export default function UploadScreen() {
           console.log("發送通知前抓取個人檔案失敗:", pError);
         }
 
-        // ✅ 精細化通知文字：區分「新紀錄」、「純文字動態」、「更新」
         let actionText = '';
         if (editRecord) {
           actionText = '更新了一篇舊紀錄 📝';
         } else {
-          actionText = selectedImages.length > 0 ? '上傳了一篇新紀錄 📸' : '發表了一則純文字心情 ✍️';
+          actionText = selectedImages.length > 0 ? '上傳了一篇新紀錄 📸' : '發表了一則新動態 ✍️';
         }
+
+        // ✅ 3. 關鍵打包！幫這則新通知打包一份完整的假 record
+        const fakeRecordDataForDetail = {
+           id: currentRecordId,
+           spaceId: uploadTargetSpaceId,
+           userId: myUserId,
+           imageUrls: cloudImageUrls,
+           note: combinedNote,
+           location: location,
+           latitude: latitude,
+           longitude: longitude,
+           mood: selectedMood !== undefined ? selectedMood : null,
+           createdAt: Date.now()
+        };
 
         await sendNotificationToMembers(
           targetSpace.members, 
@@ -290,7 +321,9 @@ export default function UploadScreen() {
             userName: userName,
             userAvatar: userAvatar,
             spaceName: targetSpace.name,
-            action: actionText
+            action: actionText,
+            // ✅ 4. 把資料轉成字串，跟著通知一起送進資料庫！
+            recordData: JSON.stringify(fakeRecordDataForDetail) 
           }
         );
       }

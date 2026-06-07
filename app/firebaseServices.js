@@ -1,6 +1,6 @@
 import { 
   collection, query, where, onSnapshot, doc, orderBy, writeBatch,
-  updateDoc, arrayUnion, addDoc, setDoc, getDocs, getDoc, deleteDoc 
+  updateDoc, arrayUnion, addDoc, setDoc, getDocs, getDoc, deleteDoc, arrayRemove 
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
 
@@ -363,5 +363,36 @@ export const getSpaceData = async (spaceId) => {
   } catch (error) {
     console.error("讀取空間資料失敗:", error);
     return null;
+  }
+};
+
+// ✅ 退出空間或踢出成員 (共用同一個邏輯)
+export const removeMemberFromSpace = async (spaceId, userId) => {
+  if (!spaceId || !userId) return false;
+  try {
+    const spaceRef = doc(db, 'Spaces', spaceId);
+    await updateDoc(spaceRef, {
+      members: arrayRemove(userId) // 從陣列中拔除該名成員
+    });
+    console.log("成員移除成功！");
+    return true;
+  } catch (error) {
+    console.error("移除成員失敗: ", error);
+    throw error;
+  }
+};
+
+// ✅ 刪除整個空間 (房主專屬)
+export const deleteSpace = async (spaceId) => {
+  if (!spaceId) return false;
+  try {
+    // 註：這只會刪除空間本體。實務上如果紀錄很多，可能需要寫 Cloud Function 來刪除底下的 Records，但目前先刪除空間入口即可。
+    const spaceRef = doc(db, 'Spaces', spaceId);
+    await deleteDoc(spaceRef);
+    console.log("空間解散成功！");
+    return true;
+  } catch (error) {
+    console.error("解散空間失敗: ", error);
+    throw error;
   }
 };

@@ -34,6 +34,7 @@ export default function ProfileScreen() {
   const [timeReminder, setTimeReminder] = useState(false);
   const [joinSpaceReminder, setJoinSpaceReminder] = useState(false);
 
+  
   // 初始化與取得資料
   useEffect(() => {
     const initialize = async () => {
@@ -159,7 +160,10 @@ export default function ProfileScreen() {
           <View style={styles.spaceListWrapper}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.spaceList}>
               {mySpaces.map((space) => (
-                <TouchableOpacity key={space.id} style={styles.spaceCard}>
+                <TouchableOpacity key={space.id} style={styles.spaceCard}onPress={() => router.push({
+    pathname: '/spacesetting', 
+    params: { spaceId: space.id } // 記得把你要管理的空間 ID 傳過去
+  })}>
                   {/* 如果空間有背景圖，就在這裡顯示 */}
                   {space.backgroundImageUrl ? (
                     <Image source={{ uri: space.backgroundImageUrl }} style={styles.spaceImagePlaceholder} />
@@ -179,9 +183,6 @@ export default function ProfileScreen() {
               )}
             </ScrollView>
             
-            <View style={styles.rightArrowContainer} pointerEvents="none">
-              <Feather name="chevron-right" size={24} color="#333" />
-            </View>
           </View>
         </View>
 

@@ -26,6 +26,20 @@ export default function SpaceListScreen() {
 
   useEffect(() => {
     if (!myUserId) return;
+    const unsubscribe = subscribeToUserSpaces(myUserId, (fetchedSpaces) => {
+      // 加上這段排序邏輯：把最新建立的排在最上面
+      const sortedSpaces = [...fetchedSpaces].sort((a, b) => {
+        const timeA = a.createdAt || 0;
+        const timeB = b.createdAt || 0;
+        return timeB - timeA; 
+      });
+      setSpaces(sortedSpaces);
+    });
+    return () => unsubscribe();
+  }, [myUserId]);
+
+  useEffect(() => {
+    if (!myUserId) return;
     
     const unsubscribe = subscribeToMyNotifications(myUserId, (notifs) => {
       // 檢查有沒有任何一筆是未讀的 (isRead === false)
@@ -68,14 +82,6 @@ export default function SpaceListScreen() {
     };
     initialize();
   }, []);
-
-  useEffect(() => {
-    if (!myUserId) return;
-    const unsubscribe = subscribeToUserSpaces(myUserId, (fetchedSpaces) => {
-      setSpaces(fetchedSpaces);
-    });
-    return () => unsubscribe();
-  }, [myUserId]);
 
   useEffect(() => {
     const fetchAvatars = async () => {
@@ -330,7 +336,7 @@ const styles = StyleSheet.create({
 
   headerLeft: { flexDirection: 'row', alignItems: 'center' },
   headerRight: { flexDirection: 'row' },
-  iconCircleBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.85)', justifyContent: 'center', alignItems: 'center', marginLeft: 10 },
+  iconCircleBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#E5E5EA', justifyContent: 'center', alignItems: 'center', marginLeft: 10 },
   notificationDot: { 
     position: 'absolute', 
     top: 6, 
