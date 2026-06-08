@@ -165,7 +165,7 @@ export default function SpaceListScreen() {
             </View>
           </View>
           
-          <View style={styles.avatarGroup}>
+          <View style={styles.avatarGroup} key={JSON.stringify(memberProfiles)}>
             {membersList.slice(0, 3).map((memberId, index) => {
               const avatarUrl = memberProfiles[memberId];
 

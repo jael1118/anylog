@@ -27,7 +27,7 @@ export default function Layout() {
   };
 
   // === 導覽列顯示邏輯 ===
-  const showNavBarPages = ['/', '/space', '/map', '/profile'];
+  const showNavBarPages = ['/', '/space', '/achievements', '/profile'];
   const showNavBar = showNavBarPages.some(page => {
     if (page === '/') return pathname === '/'; 
     return pathname.startsWith(page);          
@@ -49,10 +49,10 @@ export default function Layout() {
           </TouchableOpacity>
           
           <TouchableOpacity 
-            style={[styles.navItem, pathname === '/map' && styles.navItemActive]} 
-            onPress={() => router.replace('/map')}
+            style={[styles.navItem, pathname === '/achievements' && styles.navItemActive]} 
+            onPress={() => router.replace('/achievements')}
           >
-            <Feather name="map" size={24} color="#333" />
+            <Feather name="layout" size={24} color="#333" />
           </TouchableOpacity>
           
           <TouchableOpacity 
