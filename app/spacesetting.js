@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   StyleSheet, Text, View, SafeAreaView, TouchableOpacity, 
-  Image, Alert, ScrollView, Modal, TextInput, ActivityIndicator
+  Image, Alert, ScrollView, Modal, TextInput, ActivityIndicator, StatusBar
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -15,9 +15,16 @@ import {
 } from './firebaseServices';
 import { doc, onSnapshot } from 'firebase/firestore';
 
+// 🌟 引入全域主題 Context
+import { useAppTheme } from './ThemeContext';
+
 export default function SpaceSettingsScreen() {
   const router = useRouter();
   const { spaceId } = useLocalSearchParams();
+
+  // 🌟 從全域主題中撈取當前的 theme 設定
+  const { theme } = useAppTheme();
+  const darkMode = theme.darkMode;
 
   const [myUserId, setMyUserId] = useState(null);
   const [spaceData, setSpaceData] = useState(null);
@@ -67,7 +74,11 @@ export default function SpaceSettingsScreen() {
   }, [spaceId]);
 
   if (isLoading || !spaceData || !myUserId) {
-    return <SafeAreaView style={styles.centerContainer}><ActivityIndicator size="large" color="#333" /></SafeAreaView>;
+    return (
+      <SafeAreaView style={[styles.centerContainer, { backgroundColor: theme.bg }]}>
+        <ActivityIndicator size="large" color={theme.text} />
+      </SafeAreaView>
+    );
   }
 
   // 👑 權限判斷：陣列的第一個人就是房主
@@ -152,23 +163,31 @@ export default function SpaceSettingsScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]}>
+      <StatusBar barStyle={theme.statusBar} backgroundColor={darkMode ? '#1E1E1E' : '#FFFFFF'} />
+      
       {/* 標題列 */}
-      <View style={styles.header}>
+      <View style={[styles.header, { backgroundColor: darkMode ? '#1E1E1E' : '#FFFFFF', borderBottomWidth: darkMode ? 0.5 : 0, borderBottomColor: '#2C2C2E' }]}>
         <TouchableOpacity onPress={() => router.back()} style={{ padding: 5 }}>
-          <Feather name="chevron-left" size={28} color="#333" />
+          <Feather name="chevron-left" size={28} color={theme.text} />
         </TouchableOpacity>
-        <Text style={styles.title}>空間管理</Text>
+        <Text style={[styles.title, { color: theme.text }]}>空間管理</Text>
         <View style={{ width: 38 }} /> 
       </View>
 
-      <ScrollView style={{ flex: 1 }}>
+      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
         {/* 背景圖與空間基本資訊 */}
         <View style={styles.coverContainer}>
-          <Image 
-            source={{ uri: spaceData.backgroundImageUrl }} 
-            style={styles.coverImage} 
-          />
+          {spaceData.backgroundImageUrl ? (
+            <Image 
+              source={{ uri: spaceData.backgroundImageUrl }} 
+              style={styles.coverImage} 
+            />
+          ) : (
+            <View style={[styles.coverImage, { backgroundColor: darkMode ? '#2C2C2E' : '#666666', justifyContent: 'center', alignItems: 'center' }]}>
+              <Feather name="image" size={40} color="#999" />
+            </View>
+          )}
           <View style={styles.coverOverlay} />
           
           <View style={styles.spaceInfoOverlay}>
@@ -193,38 +212,43 @@ export default function SpaceSettingsScreen() {
         </View>
 
         {/* 成員列表 */}
-        <View style={styles.sectionContainer}>
-          <Text style={styles.sectionTitle}>空間成員 ({membersProfile.length})</Text>
+        <View style={[styles.sectionContainer, { backgroundColor: darkMode ? '#1E1E1E' : '#FFFFFF' }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>空間成員 ({membersProfile.length})</Text>
           
           {membersProfile.map((member, index) => {
             const isMe = member.id === myUserId;
             const isThisMemberOwner = index === 0;
 
             return (
-              <View key={member.id} style={styles.memberRow}>
+              <View key={member.id} style={[styles.memberRow, { borderBottomColor: darkMode ? '#2C2C2E' : '#F0F0F0' }]}>
                 <View style={styles.memberLeft}>
                   {member.avatarUrl ? (
                     <Image source={{ uri: member.avatarUrl }} style={styles.memberAvatar} />
                   ) : (
-                    <View style={styles.memberAvatarPlaceholder}>
-                      <Feather name="user" size={18} color="#999" />
+                    <View style={[styles.memberAvatarPlaceholder, { backgroundColor: darkMode ? '#2C2C2E' : '#EFEFEF' }]}>
+                      <Feather name="user" size={18} color={darkMode ? '#666' : '#999'} />
                     </View>
                   )}
                   <View>
-                    <Text style={styles.memberName}>
+                    <Text style={[styles.memberName, { color: theme.text }]}>
                       {member.name} {isMe ? '(我)' : ''}
                     </Text>
-                    {isThisMemberOwner && <Text style={styles.ownerTag}>房主</Text>}
+                    {isThisMemberOwner && (
+                      <Text style={[styles.ownerTag, { 
+                        backgroundColor: darkMode ? '#1A2235' : '#E5F1FF', 
+                        color: darkMode ? '#58A6FF' : '#007AFF' 
+                      }]}>房主</Text>
+                    )}
                   </View>
                 </View>
 
-                {/* 踢人按鈕：我是房主、且對方不是房主時才顯示 */}
+                {/* 踢人按鈕 */}
                 {isOwner && !isThisMemberOwner && (
                   <TouchableOpacity 
-                    style={styles.kickBtn}
+                    style={[styles.kickBtn, { backgroundColor: darkMode ? '#2C2C2E' : '#F0F0F0' }]}
                     onPress={() => handleKickMember(member.id, member.name)}
                   >
-                    <Text style={styles.kickBtnText}>移除</Text>
+                    <Text style={[styles.kickBtnText, { color: theme.subText }]}>移除</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -235,13 +259,22 @@ export default function SpaceSettingsScreen() {
         {/* 底部危險區域 */}
         <View style={styles.dangerZone}>
           {!isOwner && (
-            <TouchableOpacity style={styles.dangerBtn} onPress={handleLeaveSpace}>
-              <Text style={styles.dangerBtnText}>退出空間</Text>
+            <TouchableOpacity style={[styles.dangerBtn, { backgroundColor: darkMode ? '#1E1E1E' : '#FFFFFF', borderColor: darkMode ? '#2C2C2E' : '#EAEAEA' }]} onPress={handleLeaveSpace}>
+              <Text style={[styles.dangerBtnText, { color: theme.text }]}>退出空間</Text>
             </TouchableOpacity>
           )}
 
           {isOwner && (
-            <TouchableOpacity style={[styles.dangerBtn, { backgroundColor: '#FFF5F5', borderColor: '#FF3B30' }]} onPress={handleDeleteSpace}>
+            <TouchableOpacity 
+              style={[
+                styles.dangerBtn, 
+                { 
+                  backgroundColor: darkMode ? '#2A1414' : '#FFF5F5', 
+                  borderColor: '#FF3B30' 
+                }
+              ]} 
+              onPress={handleDeleteSpace}
+            >
               <Text style={[styles.dangerBtnText, { color: '#FF3B30' }]}>解散此空間</Text>
             </TouchableOpacity>
           )}
@@ -251,20 +284,22 @@ export default function SpaceSettingsScreen() {
       {/* 修改名稱用的 Modal */}
       <Modal visible={isEditNameModalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>修改空間名稱</Text>
+          <View style={[styles.modalContent, { backgroundColor: theme.modalBg }]}>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>修改空間名稱</Text>
             <TextInput
-              style={styles.modalInput}
+              style={[styles.modalInput, { backgroundColor: darkMode ? '#2C2C2E' : '#F5F5F5', color: theme.text, borderColor: theme.inputBorder }]}
               value={newSpaceName}
               onChangeText={setNewSpaceName}
               autoFocus
+              maxLength={20}
+              placeholderTextColor={darkMode ? '#555' : '#CCC'}
             />
             <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.modalBtn} onPress={() => setIsEditNameModalVisible(false)}>
-                <Text style={styles.modalBtnText}>取消</Text>
+              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: theme.cancelBtnBg }]} onPress={() => setIsEditNameModalVisible(false)}>
+                <Text style={[styles.modalBtnText, { color: theme.cancelBtnText }]}>取消</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: '#333' }]} onPress={handleSaveName}>
-                <Text style={[styles.modalBtnText, { color: '#FFF' }]}>儲存</Text>
+              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: theme.saveBtnBg }]} onPress={handleSaveName}>
+                <Text style={[styles.modalBtnText, { color: theme.saveBtnText }]}>儲存</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -276,12 +311,12 @@ export default function SpaceSettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FAFAFA' },
+  container: { flex: 1 },
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 15, height: 60, backgroundColor: '#FFF' },
-  title: { fontSize: 18, fontWeight: '600', color: '#333' },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 15, height: 60 },
+  title: { fontSize: 18, fontWeight: '600' },
   
-  coverContainer: { width: '100%', height: 220, position: 'relative', backgroundColor: '#666' },
+  coverContainer: { width: '100%', height: 220, position: 'relative' },
   coverImage: { width: '100%', height: '100%' },
   coverOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)' },
   
@@ -293,28 +328,28 @@ const styles = StyleSheet.create({
   ownerControlsOnCover: { position: 'absolute', top: 15, right: 15, flexDirection: 'row' },
   coverBtn: { backgroundColor: 'rgba(0,0,0,0.5)', padding: 10, borderRadius: 20, marginLeft: 10 },
 
-  sectionContainer: { backgroundColor: '#FFF', marginTop: 15, paddingHorizontal: 20, paddingVertical: 15 },
-  sectionTitle: { fontSize: 16, fontWeight: '600', color: '#333', marginBottom: 15 },
+  sectionContainer: { marginTop: 15, paddingHorizontal: 20, paddingVertical: 15 },
+  sectionTitle: { fontSize: 16, fontWeight: '600', marginBottom: 15 },
   
-  memberRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
+  memberRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1 },
   memberLeft: { flexDirection: 'row', alignItems: 'center' },
   memberAvatar: { width: 44, height: 44, borderRadius: 22, marginRight: 15 },
-  memberAvatarPlaceholder: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#EFEFEF', justifyContent: 'center', alignItems: 'center', marginRight: 15 },
-  memberName: { fontSize: 16, color: '#333', fontWeight: '500' },
-  ownerTag: { fontSize: 11, color: '#007AFF', backgroundColor: '#E5F1FF', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginTop: 4, alignSelf: 'flex-start', overflow: 'hidden' },
+  memberAvatarPlaceholder: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
+  memberName: { fontSize: 16, fontWeight: '500' },
+  ownerTag: { fontSize: 11, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginTop: 4, alignSelf: 'flex-start', overflow: 'hidden' },
   
-  kickBtn: { paddingHorizontal: 12, paddingVertical: 6, backgroundColor: '#F0F0F0', borderRadius: 15 },
-  kickBtnText: { fontSize: 13, color: '#666', fontWeight: '500' },
+  kickBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 15 },
+  kickBtnText: { fontSize: 13, fontWeight: '500' },
 
   dangerZone: { marginTop: 30, paddingHorizontal: 20, paddingBottom: 40 },
-  dangerBtn: { backgroundColor: '#FFF', paddingVertical: 16, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: '#EAEAEA' },
-  dangerBtnText: { fontSize: 16, fontWeight: '600', color: '#333' },
+  dangerBtn: { paddingVertical: 16, borderRadius: 12, alignItems: 'center', borderWidth: 1 },
+  dangerBtnText: { fontSize: 16, fontWeight: '600' },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
-  modalContent: { width: '80%', backgroundColor: '#FFF', borderRadius: 15, padding: 20 },
+  modalContent: { width: '80%', borderRadius: 15, padding: 20 },
   modalTitle: { fontSize: 18, fontWeight: '600', marginBottom: 15, textAlign: 'center' },
-  modalInput: { backgroundColor: '#F5F5F5', borderRadius: 8, padding: 12, fontSize: 16, marginBottom: 20 },
+  modalInput: { borderRadius: 8, padding: 12, fontSize: 16, marginBottom: 20, borderWidth: 1 },
   modalActions: { flexDirection: 'row', justifyContent: 'space-between' },
   modalBtn: { flex: 1, paddingVertical: 12, borderRadius: 8, alignItems: 'center', marginHorizontal: 5 },
-  modalBtnText: { fontSize: 16, fontWeight: '500', color: '#333' }
+  modalBtnText: { fontSize: 16, fontWeight: '500' }
 });

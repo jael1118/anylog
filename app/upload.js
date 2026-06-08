@@ -17,11 +17,18 @@ import {
   updateRecordInSpace, getUserProfile 
 } from './firebaseServices'; 
 
+// 🌟 引入全域主題 Context
+import { useAppTheme } from './ThemeContext';
+
 const { width: windowWidth } = Dimensions.get('window');
 
 export default function UploadScreen() {
   const router = useRouter();
   
+  // 🌟 從全域主題中撈取當前的 theme 設定
+  const { theme } = useAppTheme();
+  const darkMode = theme.darkMode;
+
   const { currentSpaceId, editRecord: editRecordString } = useLocalSearchParams();
   const editRecord = editRecordString ? JSON.parse(editRecordString) : null;
 
@@ -55,10 +62,8 @@ export default function UploadScreen() {
     longitudeDelta: 0.01
   });
 
-  // 加上這行：用來記錄選中的心情 (0~4 代表 5 個表情，null 代表沒選)
   const [selectedMood, setSelectedMood] = useState(null);
 
-  // 定義你的 5 張心情圖片 (⚠️ 請確認你的圖片名稱和路徑是對的，如果是放在 assets 裡的話)
   const moodOptions = [
     { id: 0, source: require('../assets/1.jpg') },
     { id: 1, source: require('../assets/2.jpg') },
@@ -67,9 +72,8 @@ export default function UploadScreen() {
     { id: 4, source: require('../assets/5.jpg') },
   ];
 
-  // ✅ 檢查目前欄位是否有任何內容 (有照片 OR 有打字)
   const combinedNote = notes.filter(n => n.trim() !== '').join('\n');
-  const hasContent = selectedImages.length > 0 || combinedNote.trim() !== ''|| selectedMood !== null;
+  const hasContent = selectedImages.length > 0 || combinedNote.trim() !== '' || selectedMood !== null;
 
   useEffect(() => {
     const initialize = async () => {
@@ -226,7 +230,6 @@ export default function UploadScreen() {
   };
 
   const handleUpload = async () => {
-    // ✅ 修正限制：只要有內容 (照片或文字選一) 且有選擇空間，就可以發佈
     if (!hasContent || !uploadTargetSpaceId) {
       Alert.alert("提示", "請輸入文字或選擇照片再發佈喔！");
       return;
@@ -237,7 +240,6 @@ export default function UploadScreen() {
       const cloudImageUrls = [];
       let base64Idx = 0;
       
-      // 如果有選擇照片才跑上傳圖床迴圈
       if (selectedImages.length > 0) {
         for (const uri of selectedImages) {
           if (uri.startsWith('http')) {
@@ -253,14 +255,11 @@ export default function UploadScreen() {
       }
       
       const combinedNote = notes.filter(n => n.trim() !== '').join('\n');
-            
-      // ✅ 1. 準備一個變數來接住「紀錄的 ID」
       let currentRecordId = editRecord ? editRecord.id : null;
       
       if (editRecord) {
         await updateRecordInSpace(uploadTargetSpaceId, editRecord.id, cloudImageUrls, combinedNote, location, latitude, longitude, selectedMood);
       } else {
-        // ✅ 2. 這裡原本是 addRecordToSpace，我們要把它拆開，手動取得新建立的 ID
         const { collection, addDoc } = require('firebase/firestore');
         const { db } = require('./firebaseConfig');
         
@@ -300,7 +299,6 @@ export default function UploadScreen() {
           actionText = selectedImages.length > 0 ? '上傳了一篇新紀錄 📸' : '發表了一則新動態 ✍️';
         }
 
-        // ✅ 3. 關鍵打包！幫這則新通知打包一份完整的假 record
         const fakeRecordDataForDetail = {
            id: currentRecordId,
            spaceId: uploadTargetSpaceId,
@@ -322,7 +320,6 @@ export default function UploadScreen() {
             userAvatar: userAvatar,
             spaceName: targetSpace.name,
             action: actionText,
-            // ✅ 4. 把資料轉成字串，跟著通知一起送進資料庫！
             recordData: JSON.stringify(fakeRecordDataForDetail) 
           }
         );
@@ -371,20 +368,19 @@ export default function UploadScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFF" />
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]}>
+      <StatusBar barStyle={theme.statusBar} backgroundColor={theme.bg} />
       
       {/* 頂部導覽 */}
-      <View style={styles.header}>
+      <View style={[styles.header, { backgroundColor: theme.bg, borderBottomWidth: darkMode ? 0.5 : 0, borderBottomColor: '#2C2C2E' }]}>
         <TouchableOpacity onPress={() => router.back()} disabled={isUploading} style={{ zIndex: 1, padding: 5 }}>
-          <Feather name="chevron-left" size={28} color={isUploading ? "#CCC" : "#333"} />
+          <Feather name="chevron-left" size={28} color={isUploading ? (darkMode ? "#444" : "#CCC") : theme.text} />
         </TouchableOpacity>
         <View style={styles.headerTitleContainer} pointerEvents="none">
-          <Text style={styles.title}>{editRecord ? "編輯紀錄" : "新增紀錄"}</Text>
+          <Text style={[styles.title, { color: theme.text }]}>{editRecord ? "編輯紀錄" : "新增紀錄"}</Text>
         </View>
-        {/* ✅ 按鈕啟用邏輯修改：只要有內容 (hasContent) 且沒在儲存中，就亮起藍色並可點擊 */}
         <TouchableOpacity onPress={handleUpload} disabled={!hasContent || isUploading} style={{ zIndex: 1, padding: 5 }}>
-          <Text style={[styles.publishBtnText, (hasContent && !isUploading) ? styles.publishBtnActive : null]}>
+          <Text style={[styles.publishBtnText, (hasContent && !isUploading) ? (darkMode ? styles.publishBtnActiveDark : styles.publishBtnActive) : null]}>
             {isUploading ? "處理中" : (editRecord ? "儲存" : "發佈")}
           </Text>
         </TouchableOpacity>
@@ -426,54 +422,52 @@ export default function UploadScreen() {
                 {selectedImages.map((_, i) => (
                   <View 
                     key={i} 
-                    style={[styles.dot, { backgroundColor: i === activeIndex ? '#D9D9D9' : '#F0F0F0' }]} 
+                    style={[styles.dot, { backgroundColor: i === activeIndex ? (darkMode ? '#666' : '#D9D9D9') : (darkMode ? '#2C2C2E' : '#F0F0F0') }]} 
                   />
                 ))}
               </View>
             )}
           </View>
         ) : (
-          /* ✅ 修改相機預設區塊：微調提示文字，讓使用者知道「不選照片也可以」 */
-          <TouchableOpacity style={styles.imageSection} onPress={pickImage}>
+          <TouchableOpacity style={[styles.imageSection, { backgroundColor: darkMode ? '#1E1E1E' : '#D9D9D9' }]} onPress={pickImage}>
             <View style={styles.imageUploadPlaceholder}>
-              <Feather name="camera" size={40} color="#999" />
-              <Text style={styles.imageUploadText}>點擊選擇照片</Text>
+              <Feather name="camera" size={40} color={darkMode ? '#444' : '#999'} />
+              <Text style={[styles.imageUploadText, { color: theme.valueText }]}>點擊選擇照片</Text>
             </View>
           </TouchableOpacity>
         )}
 
         <View style={styles.formContainer}>
           <TouchableOpacity 
-            style={styles.locationRow} 
+            style={[styles.locationRow, { borderColor: darkMode ? '#2C2C2E' : '#EAEAEA' }]} 
             onPress={() => setIsMapModalVisible(true)}
             disabled={isUploading}
             activeOpacity={0.7}
           >
-            <Feather name="map-pin" size={16} color="#333" />
-            <Text style={[styles.locationTextDisplay, !location ? { color: '#999' } : null]}>
+            <Feather name="map-pin" size={16} color={theme.text} />
+            <Text style={[styles.locationTextDisplay, { color: theme.text }, !location ? { color: theme.valueText } : null]}>
               {location || "選擇紀錄地點..."}
             </Text>
-            <Feather name="chevron-right" size={18} color="#666" />
+            <Feather name="chevron-right" size={18} color={theme.subText} />
           </TouchableOpacity>
 
-          <View style={styles.moodSelectorContainer}>
-            <Text style={styles.moodTitle}>今天的心情：</Text>
+          <View style={[styles.moodSelectorContainer, { borderColor: darkMode ? '#2C2C2E' : '#EAEAEA' }]}>
+            <Text style={[styles.moodTitle, { color: theme.subText }]}>今天的心情：</Text>
             <View style={styles.moodIconsWrapper}>
               {moodOptions.map((mood) => {
                 const isSelected = selectedMood === mood.id;
                 return (
                   <TouchableOpacity
                     key={mood.id}
-                    onPress={() => setSelectedMood(isSelected ? null : mood.id)} // 點選中，再點一次可取消
+                    onPress={() => setSelectedMood(isSelected ? null : mood.id)}
                     activeOpacity={0.6}
                   >
                     <Image 
                       source={mood.source} 
                       style={[
                         styles.moodIconImage,
-                        // 如果沒被選中，就變半透明；選中的話就恢復 100% 顯示，並加上一點點放大效果
                         { 
-                          opacity: isSelected ? 1 : 0.3,
+                          opacity: isSelected ? 1 : (darkMode ? 0.2 : 0.3),
                           transform: [{ scale: isSelected ? 1.1 : 1 }]
                         }
                       ]} 
@@ -485,14 +479,14 @@ export default function UploadScreen() {
             </View>
           </View>
 
-          <View style={styles.inputContainer}>
+          <View style={[styles.inputContainer, { borderColor: darkMode ? '#2C2C2E' : '#EAEAEA' }]}>
             {notes.map((noteText, index) => (
               <TextInput
                 key={index}
                 ref={el => inputRefs.current[index] = el} 
-                style={styles.dynamicTextInput}
+                style={[styles.dynamicTextInput, { color: theme.text }]}
                 placeholder={index === 0 && notes.length === 1 ? "寫點什麼紀錄這刻..." : ""}
-                placeholderTextColor="#999"
+                placeholderTextColor={darkMode ? "#444" : "#999"}
                 value={noteText}
                 onChangeText={(text) => handleNoteChange(text, index)}
                 onSubmitEditing={() => handleNoteSubmit(index)} 
@@ -504,16 +498,20 @@ export default function UploadScreen() {
             ))}
           </View>
 
-          <Text style={styles.sectionTitle}>發佈至空間：</Text>
+          <Text style={[styles.sectionTitle, { color: theme.subText }]}>發佈至空間：</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.spaceSelector}>
             {mySpaces.map(space => (
               <TouchableOpacity 
                 key={space.id}
-                style={[styles.spaceChip, uploadTargetSpaceId === space.id && styles.spaceChipActive]}
+                style={[
+                  styles.spaceChip, 
+                  { borderColor: darkMode ? '#333' : '#E0E0E0', backgroundColor: darkMode ? '#1E1E1E' : 'transparent' },
+                  uploadTargetSpaceId === space.id && (darkMode ? styles.spaceChipActiveDark : styles.spaceChipActive)
+                ]}
                 onPress={() => setUploadTargetSpaceId(space.id)}
                 disabled={isUploading}
               >
-                <Text style={[styles.spaceChipText, uploadTargetSpaceId === space.id && {color: 'white'}]}>
+                <Text style={[styles.spaceChipText, { color: theme.subText }, uploadTargetSpaceId === space.id && { color: darkMode ? '#000' : '#FFF' }]}>
                   {space.name}
                 </Text>
               </TouchableOpacity>
@@ -526,27 +524,28 @@ export default function UploadScreen() {
 
       {/* 地圖選點 Modal */}
       <Modal visible={isMapModalVisible} animationType="slide">
-        <SafeAreaView style={{ flex: 1, backgroundColor: '#FFF' }}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }}>
+          <StatusBar barStyle={theme.statusBar} backgroundColor={theme.bg} />
           
-          <View style={styles.modalHeader}>
+          <View style={[styles.modalHeader, { backgroundColor: theme.bg, borderColor: darkMode ? '#2C2C2E' : '#F0F0F0' }]}>
             <TouchableOpacity onPress={() => { setIsMapModalVisible(false); setSearchResults([]); }} style={{ zIndex: 1, padding: 5 }}>
-              <Feather name="x" size={24} color="#333" />
+              <Feather name="x" size={24} color={theme.text} />
             </TouchableOpacity>
             
             <View style={styles.modalTitleContainer} pointerEvents="none">
-              <Text style={styles.modalTitle}>移動地圖選點</Text>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>移動地圖選點</Text>
             </View>
 
-            <TouchableOpacity style={[styles.modalConfirmBtn, { zIndex: 1 }]} onPress={handleConfirmLocation}>
-              <Text style={styles.modalConfirmBtnText}>確定</Text>
+            <TouchableOpacity style={[styles.modalConfirmBtn, { zIndex: 1, backgroundColor: theme.saveBtnBg }]} onPress={handleConfirmLocation}>
+              <Text style={[styles.modalConfirmBtnText, { color: theme.saveBtnText }]}>確定</Text>
             </TouchableOpacity>
           </View>
 
-          <View style={styles.mapSearchBox}>
+          <View style={[styles.mapSearchBox, { backgroundColor: darkMode ? '#1E1E1E' : '#F5F5F5' }]}>
             <TextInput
-              style={styles.mapSearchInput}
+              style={[styles.mapSearchInput, { color: theme.text }]}
               placeholder="搜尋想去的地點或景點..."
-              placeholderTextColor="#999"
+              placeholderTextColor={darkMode ? '#555' : '#999'}
               value={searchQuery}
               onChangeText={handleSearchInputChange} 
               returnKeyType="search"
@@ -560,7 +559,7 @@ export default function UploadScreen() {
               }} 
               style={styles.mapSearchIcon}
             >
-              <Feather name={searchQuery.length > 0 ? "x-circle" : "search"} size={18} color="#999" />
+              <Feather name={searchQuery.length > 0 ? "x-circle" : "search"} size={18} color={darkMode ? '#555' : '#999'} />
             </TouchableOpacity>
           </View>
 
@@ -578,19 +577,19 @@ export default function UploadScreen() {
             )}
 
             {searchResults.length > 0 && (
-              <View style={styles.searchResultsContainer}>
+              <View style={[styles.searchResultsContainer, { backgroundColor: theme.modalBg, borderColor: darkMode ? '#333' : '#EAEAEA' }]}>
                 <ScrollView keyboardShouldPersistTaps="handled">
                   {searchResults.map((item, index) => {
                     const shortName = item.name || item.display_name.split(',')[0].trim();
                     return (
                       <TouchableOpacity 
                         key={index} 
-                        style={styles.searchResultItem}
+                        style={[styles.searchResultItem, { borderBottomColor: darkMode ? '#2C2C2E' : '#F5F5F5' }]}
                         onPress={() => handleSelectResult(item)}
                       >
-                        <Feather name="map-pin" size={14} color="#666" style={{ marginRight: 10 }} />
-                        <Text style={styles.searchResultText} numberOfLines={2}>
-                          <Text style={{ fontWeight: 'bold' }}>{shortName}</Text>
+                        <Feather name="map-pin" size={14} color={theme.subText} style={{ marginRight: 10 }} />
+                        <Text style={[styles.searchResultText, { color: theme.subText }]} numberOfLines={2}>
+                          <Text style={{ fontWeight: 'bold', color: theme.text }}>{shortName}</Text>
                           {`\n${item.display_name}`}
                         </Text>
                       </TouchableOpacity>
@@ -605,6 +604,7 @@ export default function UploadScreen() {
               style={{ width: '100%', height: '100%' }}
               initialRegion={mapCenter}
               showsUserLocation={true}
+              userInterfaceStyle={darkMode ? 'dark' : 'light'}
               onRegionChangeComplete={(region) => setMapCenter(region)}
               onPanDrag={() => setSelectedPoiName(null)} 
               onPress={() => {
@@ -614,7 +614,7 @@ export default function UploadScreen() {
             />
 
             <View style={styles.centerPinContainer} pointerEvents="none">
-              <Feather name="map-pin" size={36} color="#333" />
+              <Feather name="map-pin" size={36} color={darkMode ? '#FFF' : '#333'} />
               <View style={styles.centerPinShadow} />
             </View>
           </View>
@@ -627,65 +627,64 @@ export default function UploadScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFFFFF' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 15, height: 60, backgroundColor: '#FFF' },
+  container: { flex: 1 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 15, height: 60 },
   headerTitleContainer: { position: 'absolute', left: 0, right: 0, alignItems: 'center', justifyContent: 'center', zIndex: 0 },
-  title: { fontSize: 18, fontWeight: '600', color: '#333' },
+  title: { fontSize: 18, fontWeight: '600' },
   publishBtnText: { fontSize: 16, fontWeight: '600', color: '#CCC' },
   publishBtnActive: { color: '#007AFF' },
+  publishBtnActiveDark: { color: '#FFFFFF' }, // 🌟 深色模式下啟動時發佈按鈕變為純白
   content: { flex: 1 }, 
-  imageSection: { width: windowWidth, height: windowWidth, backgroundColor: '#D9D9D9' },
+  imageSection: { width: windowWidth, height: windowWidth },
   mainImage: { width: windowWidth, height: windowWidth },
   imageUploadPlaceholder: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 40 },
-  imageUploadText: { color: '#999', marginTop: 10, fontSize: 14, textAlign: 'center', lineHeight: 20 },
+  imageUploadText: { marginTop: 10, fontSize: 14, textAlign: 'center', lineHeight: 20 },
   floatingReselectBtn: { position: 'absolute', bottom: 15, right: 15, backgroundColor: 'rgba(0,0,0,0.6)', width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
   dotsContainer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 12, marginBottom: 5 },
   dot: { width: 6, height: 6, borderRadius: 3, marginHorizontal: 4 },
   formContainer: { paddingHorizontal: 20, paddingTop: 10 },
-  locationRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderColor: '#EAEAEA', marginBottom: 15 },
-  locationTextDisplay: { flex: 1, fontSize: 16, color: '#333', marginLeft: 12 },
-  inputContainer: { marginBottom: 30, borderBottomWidth: 1, borderColor: '#EAEAEA', paddingBottom: 10 },
-  dynamicTextInput: { fontSize: 16, lineHeight: 28, color: '#333', minHeight: 28, textAlignVertical: 'center', marginBottom: 2 },
-  sectionTitle: { fontSize: 14, color: '#666', marginBottom: 10, fontWeight: '500' },
+  locationRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, marginBottom: 15 },
+  locationTextDisplay: { flex: 1, fontSize: 16, marginLeft: 12 },
+  inputContainer: { marginBottom: 30, borderBottomWidth: 1, paddingBottom: 10 },
+  dynamicTextInput: { fontSize: 16, lineHeight: 28, minHeight: 28, textAlignVertical: 'center', marginBottom: 2 },
+  sectionTitle: { fontSize: 14, marginBottom: 10, fontWeight: '500' },
   spaceSelector: { flexDirection: 'row' },
-  spaceChip: { paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#E0E0E0', marginRight: 10 },
-  spaceChipActive: { backgroundColor: '#333', borderColor: '#333' },
-  spaceChipText: { color: '#666', fontWeight: '600' },
-  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 15, height: 55, borderBottomWidth: 1, borderColor: '#F0F0F0' },
+  spaceChip: { paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20, borderWidth: 1, marginRight: 10 },
+  spaceChipActive: { backgroundColor: '#111111', borderColor: '#111111' },
+  spaceChipActiveDark: { backgroundColor: '#FFFFFF', borderColor: '#FFFFFF' }, // 🌟 深色模式下選取的膠囊底色變純白
+  spaceChipText: { fontWeight: '600' },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 15, height: 55, borderBottomWidth: 1 },
   modalTitleContainer: { position: 'absolute', left: 0, right: 0, alignItems: 'center', justifyContent: 'center', zIndex: 0 },
-  modalTitle: { fontSize: 16, fontWeight: '600', color: '#333' },
-  modalConfirmBtn: { backgroundColor: '#333', paddingHorizontal: 15, paddingVertical: 6, borderRadius: 15 },
-  modalConfirmBtnText: { color: '#FFF', fontSize: 13, fontWeight: '600' },
-  mapSearchBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F5F5F5', borderRadius: 10, margin: 12, paddingHorizontal: 12, height: 44 },
-  mapSearchInput: { flex: 1, fontSize: 15, color: '#333', padding: 0 },
+  modalTitle: { fontSize: 16, fontWeight: '600' },
+  modalConfirmBtn: { paddingHorizontal: 15, paddingVertical: 6, borderRadius: 15 },
+  modalConfirmBtnText: { fontSize: 13, fontWeight: '600' },
+  mapSearchBox: { flexDirection: 'row', alignItems: 'center', borderRadius: 10, margin: 12, paddingHorizontal: 12, height: 44 },
+  mapSearchInput: { flex: 1, fontSize: 15, padding: 0 },
   mapSearchIcon: { padding: 5 },
   centerPinContainer: { position: 'absolute', top: '50%', left: '50%', marginLeft: -18, marginTop: -36, alignItems: 'center', justifyContent: 'center', zIndex: 10 },
   centerPinShadow: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(0,0,0,0.3)', marginTop: -2 },
   searchOverlayMask: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.2)', zIndex: 998 },
-  searchResultsContainer: { position: 'absolute', top: 5, left: 12, right: 12, backgroundColor: '#FFFFFF', borderRadius: 10, maxHeight: 250, zIndex: 999, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 5, borderWidth: 1, borderColor: '#EAEAEA' },
-  searchResultItem: { flexDirection: 'row', alignItems: 'center', padding: 14, borderBottomWidth: 1, borderBottomColor: '#F5F5F5' },
-  searchResultText: { fontSize: 13, color: '#666', flex: 1, lineHeight: 20 },
-  // 🌟 心情選擇列的樣式
+  searchResultsContainer: { position: 'absolute', top: 5, left: 12, right: 12, borderRadius: 10, maxHeight: 250, zIndex: 999, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 5, borderWidth: 1 },
+  searchResultItem: { flexDirection: 'row', alignItems: 'center', padding: 14, borderBottomWidth: 1 },
+  searchResultText: { fontSize: 13, flex: 1, lineHeight: 20 },
   moodSelectorContainer: { 
-    marginBottom: 20, // 跟下面的內文保持一點距離
+    marginBottom: 20, 
     paddingVertical: 10,
-    borderBottomWidth: 1, 
-    borderColor: '#EAEAEA'
+    borderBottomWidth: 1
   },
   moodTitle: {
     fontSize: 14, 
-    color: '#666', 
     marginBottom: 12, 
     fontWeight: '500'
   },
   moodIconsWrapper: {
     flexDirection: 'row',
-    justifyContent: 'space-between', // 讓五個表情平均分散
+    justifyContent: 'space-between', 
     alignItems: 'center',
     paddingHorizontal: 10,
   },
   moodIconImage: {
-    width: 40,  // 設定表情圖片的大小，你可以依據你畫的圖調整
+    width: 40,  
     height: 40,
   },
 });
