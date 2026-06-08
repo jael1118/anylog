@@ -63,9 +63,9 @@ export default function SpaceListScreen() {
       // 3. 如果資料庫沒有檔案（代表是全新成員），立刻幫他建立預設資料！
       if (!profile) {
         const defaultAvatars = [
-          "https://github.com/jael1118/appimg/blob/main/img_1780773971807_vchtqx.jpg?raw=true",
-    "https://github.com/jael1118/appimg/blob/main/img_1780773970686_9xxhpq.jpg?raw=true",
-    "https://github.com/jael1118/appimg/blob/main/img_1780773969404_9wnp6d.jpg?raw=true"
+          "https://raw.githubusercontent.com/jael1118/appimg/main/img_1780773971807_vchtqx.jpg?raw=true",
+    "https://raw.githubusercontent.com/jael1118/appimg/main/img_1780773970686_9xxhpq.jpg?raw=true",
+    "https://raw.githubusercontent.com/jael1118/appimg/main/img_1780773969404_9wnp6d.jpg?raw=true"
         ];
         const randomIndex = Math.floor(Math.random() * defaultAvatars.length);
 
