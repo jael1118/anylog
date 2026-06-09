@@ -70,6 +70,10 @@ export default function TutorialScreen() {
       answer: "只要點擊貼文，就能看到留言區，可以自由討論！" 
     },
     { 
+      keywords: ['貼文', '發文', '新貼文'], 
+      answer: "只要點擊首頁/空間頁右下角加號+，就能新建貼文！" 
+    },
+    { 
       keywords: ['TXT', '兔巴兔', '歐巴', '嘻嘻', '鋼球鋼', '鋼球剛'], 
       answer: "你可真有品味，鋼球剛阿爺爺" 
     },
