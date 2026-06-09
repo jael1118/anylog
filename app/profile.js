@@ -37,25 +37,29 @@ export default function ProfileScreen() {
   const [timeReminder, setTimeReminder] = useState(false);
   const [joinSpaceReminder, setJoinSpaceReminder] = useState(false);
   
-  // ✅ 新增：自訂定時時間的狀態與 Modal 控制
+  // 自訂定時時間的狀態與 Modal 控制
   const [reminderTime, setReminderTime] = useState("09:00");
   const [isTimePickerVisible, setIsTimePickerVisible] = useState(false);
   const [tempTime, setTempTime] = useState("");
 
+  // 表情放大檢視 Modal 的獨立狀態
+  const [isPreviewMoodVisible, setIsPreviewMoodVisible] = useState(false);
+  const [selectedPreviewMood, setSelectedPreviewMood] = useState(null);
+
   // 從全域主題中撈取切換方法
   const { theme, changeThemeMode } = useAppTheme();
   const currentMode = theme.themeMode; // 'light' | 'dark' | 'cyber'
+  const isDarkEnv = currentMode === 'dark'; 
 
-  // 🌟 表情管理資料配置（前 5 個目前全解鎖，後 2 個示範未來鎖住用純色取代）
+  // 表情管理資料配置
   const moodManagementOptions = [
-    { id: 0, source: require('../assets/1.jpg'), color: '#FF9A9E', isUnlocked: true },
-    { id: 1, source: require('../assets/2.jpg'), color: '#FFB7B2', isUnlocked: true },
-    { id: 2, source: require('../assets/3.jpg'), color: '#FFDAC1', isUnlocked: true },
-    { id: 3, source: require('../assets/4.jpg'), color: '#E2F0CB', isUnlocked: true },
-    { id: 4, source: require('../assets/5.jpg'), color: '#B5EAD7', isUnlocked: true },
-    // ⬇️ 這裡示範您未來要新增的「鎖定狀態」，先不放圖片 (source: null)，直接顯示純色塊
-    { id: 5, source: null, color: '#D9D9D9', isUnlocked: false, unlockCondition: "解鎖條件：空間紀錄累積達到 10 篇 ✨" },
-    { id: 6, source: null, color: '#EAEAEA', isUnlocked: false, unlockCondition: "解鎖條件：完美收錄相框別冊第 1 輯 ✦" },
+    { id: 0, source: require('../assets/1.jpg'), color: '#FF9A9E', isUnlocked: true, name: "魂飛魄散" },
+    { id: 1, source: require('../assets/2.jpg'), color: '#FFB7B2', isUnlocked: true, name: "蛤?" },
+    { id: 2, source: require('../assets/3.jpg'), color: '#FFDAC1', isUnlocked: true, name: "哭哭" },
+    { id: 3, source: require('../assets/4.jpg'), color: '#E2F0CB', isUnlocked: true, name: "普普soso" },
+    { id: 4, source: require('../assets/5.jpg'), color: '#B5EAD7', isUnlocked: true, name: "笑笑" },
+    { id: 5, source: null, color: isDarkEnv ? '#2C2C2E' : '#D9D9D9', isUnlocked: false, name: "未來擴充表情 🔒", unlockCondition: "解鎖條件：空間紀錄累積達到 10 篇 ✨" },
+    { id: 6, source: null, color: isDarkEnv ? '#3A3A3C' : '#EAEAEA', isUnlocked: false, name: "未來擴充表情 🔒", unlockCondition: "解鎖條件：完美收錄相框別冊第 1 輯 ✦" },
   ];
 
   // 初始化與取得個人資料
@@ -134,9 +138,8 @@ export default function ProfileScreen() {
     }
   };
 
-  // ✅ 處理儲存自訂定時提醒
+  // 處理儲存自訂定時提醒
   const handleSaveTime = () => {
-    // 簡單驗證時間格式是否為 HH:mm (24小時制)
     const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
     if (!timeRegex.test(tempTime)) {
       Alert.alert("格式錯誤", "請輸入有效的時間格式，例如 09:00 或 18:30");
@@ -187,10 +190,9 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* 2. 空間管理區塊 (✅ 已加上優美的圓角設計 borderRadius: 16) */}
+        {/* 2. 空間管理區塊 */}
         <View style={styles.sectionContainer}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>空間管理</Text>
-          
           <View style={styles.spaceListWrapper}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.spaceList}>
               {mySpaces.map((space) => (
@@ -227,7 +229,7 @@ export default function ProfileScreen() {
             <Switch 
               value={uploadReminder} 
               onValueChange={setUploadReminder}
-              trackColor={{ false: theme.isCyber ? "#00FFFF" : (theme.darkMode ? "#333333" : "#E0E0E0"), true: theme.isCyber ? "#FF007F" : (theme.darkMode ? "#FFFFFF" : "#000000") }}
+              trackColor={{ false: theme.isCyber ? "#00FFFF" : (isDarkEnv ? "#333333" : "#E0E0E0"), true: theme.isCyber ? "#FF007F" : (isDarkEnv ? "#FFFFFF" : "#000000") }}
               thumbColor={theme.isCyber ? "#FFFF00" : "#FFFFFF"}
             />
           </View>
@@ -235,7 +237,6 @@ export default function ProfileScreen() {
           <View style={styles.settingRow}>
             <Text style={[styles.settingLabel, { color: theme.subText }]}>定時</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              {/* ✅ 新增：可點擊修改的定時時間按鈕 */}
               <TouchableOpacity 
                 style={[styles.timePickerBtn, { backgroundColor: theme.cardBg, borderColor: theme.inputBorder }]}
                 onPress={() => {
@@ -248,7 +249,7 @@ export default function ProfileScreen() {
               <Switch 
                 value={timeReminder} 
                 onValueChange={setTimeReminder}
-                trackColor={{ false: theme.isCyber ? "#00FFFF" : (theme.darkMode ? "#333333" : "#E0E0E0"), true: theme.isCyber ? "#FF007F" : (theme.darkMode ? "#FFFFFF" : "#000000") }}
+                trackColor={{ false: theme.isCyber ? "#00FFFF" : (isDarkEnv ? "#333333" : "#E0E0E0"), true: theme.isCyber ? "#FF007F" : (isDarkEnv ? "#FFFFFF" : "#000000") }}
                 thumbColor={theme.isCyber ? "#FFFF00" : "#FFFFFF"}
               />
             </View>
@@ -259,7 +260,7 @@ export default function ProfileScreen() {
             <Switch 
               value={joinSpaceReminder} 
               onValueChange={setJoinSpaceReminder}
-              trackColor={{ false: theme.isCyber ? "#00FFFF" : (theme.darkMode ? "#333333" : "#E0E0E0"), true: theme.isCyber ? "#FF007F" : (theme.darkMode ? "#FFFFFF" : "#000000") }}
+              trackColor={{ false: theme.isCyber ? "#00FFFF" : (isDarkEnv ? "#333333" : "#E0E0E0"), true: theme.isCyber ? "#FF007F" : (isDarkEnv ? "#FFFFFF" : "#000000") }}
               thumbColor={theme.isCyber ? "#FFFF00" : "#FFFFFF"}
             />
           </View>
@@ -268,28 +269,18 @@ export default function ProfileScreen() {
         {/* 4. 主題外觀切換區塊 */}
         <View style={styles.sectionContainer}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>主題外觀</Text>
-          
           <View style={styles.themePillRow}>
-            <TouchableOpacity 
-              style={[styles.themeChip, { borderColor: theme.inputBorder }, currentMode === 'light' && styles.themeChipActiveLight]} 
-              onPress={() => changeThemeMode('light')}
-            >
+            <TouchableOpacity style={[styles.themeChip, { borderColor: theme.inputBorder }, currentMode === 'light' && styles.themeChipActiveLight]} onPress={() => changeThemeMode('light')}>
               <Feather name="sun" size={14} color={currentMode === 'light' ? '#111111' : (theme.isCyber ? '#000000' : theme.subText)} />
               <Text style={[styles.themeChipText, { color: currentMode === 'light' ? '#111111' : (theme.isCyber ? '#000000' : theme.subText) }]}> 亮白</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity 
-              style={[styles.themeChip, { borderColor: theme.inputBorder }, currentMode === 'dark' && styles.themeChipActiveDark]} 
-              onPress={() => changeThemeMode('dark')}
-            >
+            <TouchableOpacity style={[styles.themeChip, { borderColor: theme.inputBorder }, currentMode === 'dark' && styles.themeChipActiveDark]} onPress={() => changeThemeMode('dark')}>
               <Feather name="moon" size={14} color={currentMode === 'dark' ? '#000000' : (theme.isCyber ? '#000000' : theme.subText)} />
               <Text style={[styles.themeChipText, { color: currentMode === 'dark' ? '#000000' : (theme.isCyber ? '#000000' : theme.subText) }]}> 深黑</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity 
-              style={[styles.themeChip, { borderColor: theme.inputBorder }, currentMode === 'cyber' && styles.themeChipActiveCyber]} 
-              onPress={() => changeThemeMode('cyber')}
-            >
+            <TouchableOpacity style={[styles.themeChip, { borderColor: theme.inputBorder }, currentMode === 'cyber' && styles.themeChipActiveCyber]} onPress={() => changeThemeMode('cyber')}>
               <Feather name="zap" size={14} color={currentMode === 'cyber' ? '#FFFF00' : (theme.isCyber ? '#000000' : theme.subText)} />
               <Text style={[styles.themeChipText, { color: currentMode === 'cyber' ? '#FFFF00' : (theme.isCyber ? '#000000' : theme.subText) }]}> 現代</Text>
             </TouchableOpacity>
@@ -299,28 +290,23 @@ export default function ProfileScreen() {
         {/* 5. 表情管理區塊 */}
         <View style={styles.sectionContainer}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>表情管理</Text>
-          
           <View style={styles.moodManagementRow}>
             {moodManagementOptions.map((mood) => (
               <TouchableOpacity 
                 key={mood.id} 
-                activeOpacity={mood.isUnlocked ? 0.7 : 1}
+                activeOpacity={0.7}
                 onPress={() => {
-                  if (!mood.isUnlocked) {
-                    Alert.alert("表情未解鎖 🔒", mood.unlockCondition);
-                  } else {
-                    Alert.alert("表情已啟用 📸", "您已經可以在空間紀錄、心情小卡中自由運用這個動態表情貼圖囉！");
-                  }
+                  setSelectedPreviewMood(mood);
+                  setIsPreviewMoodVisible(true);
                 }}
                 style={[
                   styles.moodManageCard, 
                   { 
-                    backgroundColor: mood.isUnlocked ? theme.cardBg : mood.color, // 未解鎖時顯示您預設的純色背景
+                    backgroundColor: mood.isUnlocked ? theme.cardBg : mood.color,
                     borderColor: theme.inputBorder 
                   }
                 ]}
               >
-                {/* 若有圖片才渲染，沒有圖片就純粹顯示色塊 */}
                 {mood.source && (
                   <Image 
                     source={mood.source} 
@@ -328,8 +314,6 @@ export default function ProfileScreen() {
                     resizeMode="contain" 
                   />
                 )}
-                
-                {/* 如果被鎖住，加上鎖頭圖示 */}
                 {!mood.isUnlocked && (
                   <View style={styles.moodLockOverlay}>
                     <Feather name="lock" size={16} color={theme.isCyber ? '#FFFF00' : '#FF3B30'} />
@@ -338,6 +322,22 @@ export default function ProfileScreen() {
               </TouchableOpacity>
             ))}
           </View>
+        </View>
+
+        {/* 6. 常見問題與教學區塊 */}
+        <View style={styles.sectionContainer}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>幫助與支援</Text>
+          <TouchableOpacity 
+            style={[styles.faqClickRow, { backgroundColor: theme.cardBg, borderColor: theme.inputBorder }]} 
+            activeOpacity={0.7}
+            onPress={() => router.push('/tutorial')}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Feather name="help-circle" size={18} color={theme.subText} style={{ marginRight: 12 }} />
+              <Text style={[styles.settingLabel, { color: theme.text }]}>常見問題與使用教學</Text>
+            </View>
+            <Feather name="chevron-right" size={18} color={theme.subText} />
+          </TouchableOpacity>
         </View>
         
         <View style={{ height: 100 }} />
@@ -369,7 +369,7 @@ export default function ProfileScreen() {
         </View>
       </Modal>
 
-      {/* ✅ 新增：選擇定時時間的 Modal */}
+      {/* 選擇定時時間的 Modal */}
       <Modal visible={isTimePickerVisible} transparent={true} animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: theme.modalBg }]}>
@@ -406,6 +406,56 @@ export default function ProfileScreen() {
         </View>
       </Modal>
 
+      {/* 🌟 表情放大檢視 Modal (已移除底下一條的大按鈕，改為右上角乾淨的叉叉關閉) */}
+      <Modal visible={isPreviewMoodVisible} transparent={true} animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: theme.modalBg, padding: 25, position: 'relative' }]}>
+            
+            {/* 右上角優雅的叉叉按鈕 */}
+            <TouchableOpacity 
+              style={styles.modalCloseCornerBtn} 
+              onPress={() => setIsPreviewMoodVisible(false)}
+            >
+              <Feather name="x" size={20} color={theme.text} />
+            </TouchableOpacity>
+
+            <View style={{ alignItems: 'center', width: '100%' }}>
+              <Text style={[styles.modalTitle, { color: theme.text, marginBottom: 20 }]}>表情詳細檢視</Text>
+              
+              <View style={[
+                styles.previewMoodCardFrame, 
+                { 
+                  backgroundColor: selectedPreviewMood?.isUnlocked ? (isDarkEnv ? '#121212' : '#F5F5F7') : selectedPreviewMood?.color,
+                  borderColor: theme.inputBorder
+                }
+              ]}>
+                {selectedPreviewMood?.source ? (
+                  <Image 
+                    source={selectedPreviewMood.source} 
+                    style={[styles.previewMoodLargeImage, !selectedPreviewMood.isUnlocked && { opacity: 0.15 }]} 
+                    resizeMode="contain" 
+                  />
+                ) : (
+                  <Feather name="lock" size={48} color={theme.isCyber ? '#FFFF00' : '#FF3B30'} />
+                )}
+              </View>
+
+              {/* 下排註解文字與解鎖條件 */}
+              <Text style={[styles.previewMoodName, { color: theme.text }]}>
+                {selectedPreviewMood?.name}
+              </Text>
+              
+              {!selectedPreviewMood?.isUnlocked && (
+                <Text style={[styles.previewMoodCondition, { color: theme.isCyber ? '#000000' : '#FF3B30', backgroundColor: theme.isCyber ? '#00FF66' : 'transparent' }]}>
+                  {selectedPreviewMood?.unlockCondition}
+                </Text>
+              )}
+            </View>
+
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -427,7 +477,6 @@ const styles = StyleSheet.create({
 
   spaceListWrapper: { position: 'relative' },
   spaceList: { flexDirection: 'row' },
-  // ✅ 空間管理卡片圓角化 (borderRadius: 16)
   spaceCard: { width: 120, height: 140, marginRight: 12, borderRadius: 16, overflow: 'hidden' }, 
   spaceImagePlaceholder: { flex: 1 },
   spaceLabel: { height: 32, justifyContent: 'center', paddingHorizontal: 8 },
@@ -438,21 +487,29 @@ const styles = StyleSheet.create({
   settingValue: { fontSize: 15, marginRight: 15 },
   timePickerBtn: { marginRight: 10, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1 },
 
-  // 主題選項按鈕列樣式
   themePillRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 5 },
   themeChip: { flex: 1, flexDirection: 'row', height: 44, borderWidth: 1, borderRadius: 22, justifyContent: 'center', alignItems: 'center', marginHorizontal: 4 },
   themeChipText: { fontSize: 14, fontWeight: '600' },
-  
-  // 三種激活狀態顏色
   themeChipActiveLight: { backgroundColor: '#E5E5EA', borderColor: '#E5E5EA' },
   themeChipActiveDark: { backgroundColor: '#FFFFFF', borderColor: '#FFFFFF' },
-  themeChipActiveCyber: { backgroundColor: '#FF007F', borderColor: '#FF007F' }, // 激活時變霓虹粉
+  themeChipActiveCyber: { backgroundColor: '#FF007F', borderColor: '#FF007F' }, 
 
-  // 表情管理排版與格線樣式
+  moodManagementRow: { flexDirection: 'row', justifyContent: 'flex-start', flexWrap: 'wrap', marginTop: 5, paddingHorizontal: 2, gap: 12 },
   moodManagementRow: { flexDirection: 'row', justifyContent: 'flex-start', flexWrap: 'wrap', marginTop: 5, paddingHorizontal: 2, gap: 12 },
   moodManageCard: { width: 54, height: 54, borderRadius: 14, borderWidth: 1, justifyContent: 'center', alignItems: 'center', overflow: 'hidden', position: 'relative' },
   moodManageImage: { width: 44, height: 44 },
   moodLockOverlay: { position: 'absolute', top: 0, left: 0, bottom: 0, right: 0, backgroundColor: 'rgba(0, 0, 0, 0.4)', justifyContent: 'center', alignItems: 'center' },
+
+  faqClickRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingRight: 15 },
+
+  // 🌟 新增：右上角絕對定位的關閉叉叉按鈕樣式
+  modalCloseCornerBtn: { position: 'absolute', top: 15, right: 15, padding: 5, zIndex: 10 },
+
+  // 表情預覽樣式
+  previewMoodCardFrame: { width: 120, height: 120, borderRadius: 24, borderWidth: 2, justifyContent: 'center', alignItems: 'center', overflow: 'hidden', marginBottom: 15 },
+  previewMoodLargeImage: { width: 90, height: 90 },
+  previewMoodName: { fontSize: 16, fontWeight: '700', marginTop: 5, textAlign: 'center' },
+  previewMoodCondition: { fontSize: 13, fontWeight: '600', marginTop: 8, textAlign: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
 
   // Modal 樣式
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
