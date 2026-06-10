@@ -1,4 +1,3 @@
-// app/tutorial.js
 import React, { useState, useRef } from 'react';
 import { 
   StyleSheet, Text, View, SafeAreaView, TouchableOpacity, 
@@ -7,6 +6,8 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAppTheme } from './ThemeContext';
+import axios from 'axios';
+import knowledgeBase from '../aiKnowledgeBase.json';
 
 export default function TutorialScreen() {
   const router = useRouter();
@@ -15,15 +16,14 @@ export default function TutorialScreen() {
   const isCyber = theme.themeMode === 'cyber';
   
   const [expandedId, setExpandedId] = useState(null);
-
   const [chatInput, setChatInput] = useState('');
   const [isAiThinking, setIsAiThinking] = useState(false);
   const [chatMessages, setChatMessages] = useState([
-    { id: 'welcome', text: '你好！我是你的 App 說明書小精靈。有任何關於空間管理、貼圖解鎖、主題更換或文字排版的問題，都可以隨時問我唷！', isBot: true }
+    { id: 'welcome', text: '你好！我是你的 App 說明小精靈，有問題都可以問我！', isBot: true }
   ]);
   const chatFlatListRef = useRef(null);
 
-  const faqData = [
+   const faqData = [
     {
       id: 1,
       title: "如何建立新空間？",
@@ -46,8 +46,6 @@ export default function TutorialScreen() {
     }
   ];
 
-  // 🌟 教育 AI 的智慧核心：您可以透過增加 keywords 來擴充 AI 的大腦！
-  // 這裡已經把「建、開、做、創、弄、改、換、變、讀、看」等各種日常問法同義詞都教育進去了
   const appKnowledgeBase = [
     { 
       keywords: ['空間', '建立', '新增', '加入', '代碼', '邀請', '邀請碼', '開空間', '建空間', '做空間', '創空間', '弄空間', '群組', '朋友', '分享'], 
@@ -79,180 +77,117 @@ export default function TutorialScreen() {
     },
   ];
 
-  const toggleExpand = (id) => {
-    setExpandedId(expandedId === id ? null : id);
-  };
-
-  // 🌟 AI 教育演算法：從「字詞精確比對」升級為「語意多重命中計分制」
-  const handleSendChatMessage = () => {
+  const handleSendChatMessage = async () => {
     if (!chatInput.trim()) return;
-
     const userText = chatInput.trim();
-    const userMessage = { id: Date.now().toString(), text: userText, isBot: false };
-    setChatMessages(prev => [...prev, userMessage]);
-    
-    const currentQuery = userText.toLowerCase();
+    setChatMessages(prev => [...prev, { id: Date.now().toString(), text: userText, isBot: false }]);
     setChatInput('');
     setIsAiThinking(true);
 
-    setTimeout(() => {
-      let bestMatch = null;
-      let highestScore = 0;
+    // 1. 準備知識庫內容
+    const knowledgeString = JSON.stringify(appKnowledgeBase);
 
-      // 智慧計分：使用者提問的句子中，命中的同義關鍵字越多，分數越高
-      appKnowledgeBase.forEach(item => {
-        let score = 0;
-        item.keywords.forEach(keyword => {
-          if (currentQuery.includes(keyword)) {
-            score += 1; // 命中一個關鍵字加 1 分
-          }
-        });
-
-        if (score > highestScore) {
-          highestScore = score;
-          bestMatch = item.answer;
+    try {
+      // 2. 呼叫 API，將知識庫注入 system prompt
+      const response = await axios.post(
+        'https://api.groq.com/openai/v1/chat/completions',
+        {
+          model: 'llama-3.1-8b-instant',
+          messages: [
+            { 
+              role: 'system', 
+              content: `你是一個共享空間紀錄 App 的專業客服小精靈。
+              請依據以下知識庫回答使用者問題：
+              ${knowledgeString}
+              
+              規則：
+              - 只能回答與 App 功能有關的問題。
+              - 若問題與 App 無關，或知識庫中沒有答案，請禮貌回覆：「抱歉，我目前只負責回答關於空間、表情、拼圖或主題設定的問題喔！」
+              - 回答請簡潔，使用繁體中文。` 
+            },
+            { role: 'user', content: userText }
+          ]
+        },
+        { 
+          headers: { 
+            'Authorization': 'Bearer YOUR_GROQ_API', 
+            'Content-Type': 'application/json' 
+          } 
         }
-      });
-
-      // 🛑 限制：只有分數大於 0（代表與 App 相關）才回答；若分數為 0（問無關問題）一律拒絕
-      const finalBotResponse = highestScore > 0 
-        ? bestMatch 
-        : "我是本 App 的專屬精靈助理，只能為您解答有關空間建立、提醒設定、主題更換、貼圖解鎖、粗斜體文字編輯或拼圖別冊等軟體操作問題。其他無關的話題我是無法回答的喔！";
-
-      setChatMessages(prev => [...prev, { id: (Date.now() + 1).toString(), text: finalBotResponse, isBot: true }]);
+      );
+      
+      const aiResponse = response.data.choices[0].message.content;
+      setChatMessages(prev => [...prev, { id: Date.now().toString(), text: aiResponse, isBot: true }]);
+      
+    } catch (error) {
+      console.error("API Error:", error.response?.data || error.message);
+      setChatMessages(prev => [...prev, { id: Date.now().toString(), text: "精靈現在連線有點累，請稍後再試！", isBot: true }]);
+    } finally {
       setIsAiThinking(false);
-    }, 600);
+    }
   };
-
-  const renderChatItem = ({ item }) => (
-    <View style={[styles.chatBubbleRow, item.isBot ? { justifyContent: 'flex-start' } : { justifyContent: 'flex-end' }]}>
-      {item.isBot && (
-        <View style={[styles.botAvatarCircle, { backgroundColor: isCyber ? '#FF007F' : (darkMode ? '#2C2C2E' : '#666666') }]}>
-          <Feather name="cpu" size={12} color="#FFFFFF" />
-        </View>
-      )}
-      <View style={[
-        styles.chatBubble, 
-        item.isBot 
-          ? { backgroundColor: darkMode ? '#1E1E1E' : '#F0F0F2', borderTopLeftRadius: 4 } 
-          : { backgroundColor: isCyber ? '#FF007F' : (darkMode ? '#FFFFFF' : '#111111'), borderTopRightRadius: 4 }
-      ]}>
-        <Text style={[
-          styles.chatBubbleText, 
-          item.isBot 
-            ? { color: theme.text } 
-            : { color: isCyber ? '#FFFF00' : (darkMode ? '#000000' : '#FFFFFF') }
-        ]}>
-          {item.text}
-        </Text>
-      </View>
-    </View>
-  );
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.bg }]}>
       <StatusBar barStyle={theme.statusBar} backgroundColor={theme.bg} />
       
-      <View style={[
-        styles.header, 
-        { 
-          backgroundColor: theme.bg,
-          borderBottomWidth: (darkMode || isCyber) ? 0.5 : 1, 
-          borderBottomColor: theme.inputBorder 
-        }
-      ]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Feather name="chevron-left" size={26} color={theme.text} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.text }]}>常見問題與使用教學</Text>
+      <View style={[styles.header, { borderBottomColor: theme.inputBorder }]}>
+        <TouchableOpacity onPress={() => router.back()}><Feather name="chevron-left" size={26} color={theme.text} /></TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>常見問題與教學</Text>
         <View style={{ width: 24 }} />
       </View>
 
+     {/* 🌟 鍵盤避讓區塊：behavior 改為 padding，且只包住 FlatList 和輸入框 */}
       <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
-        style={{ flex: 1 }}
+        style={{ flex: 1 }} 
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <FlatList
           ref={chatFlatListRef}
           data={chatMessages}
           keyExtractor={item => item.id}
-          renderItem={renderChatItem}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 20 }}
+          contentContainerStyle={{ padding: 15 }}
           onContentSizeChange={() => chatFlatListRef.current?.scrollToEnd({ animated: true })}
-          ListHeaderComponent={
-            <View style={{ paddingTop: 20 }}>
-              <Text style={[styles.introText, { color: theme.subText }]}>
-                我們整理了一些最常見的問題與使用技巧，幫助你更快上手這個 App！
-              </Text>
-
-              <View style={{ marginBottom: 25 }}>
-                {faqData.map((item) => (
-                  <View 
-                    key={item.id} 
-                    style={[
-                      styles.faqCard, 
-                      { 
-                        backgroundColor: theme.cardBg, 
-                        borderColor: theme.inputBorder,
-                        shadowColor: '#000000',
-                        shadowOpacity: darkMode ? 0 : 0.04
-                      }
-                    ]}
-                  >
-                    <TouchableOpacity 
-                      style={styles.faqHeader} 
-                      activeOpacity={0.7} 
-                      onPress={() => toggleExpand(item.id)}
-                    >
-                      <Text style={[styles.faqTitle, { color: theme.text }]}>{item.title}</Text>
-                      <Feather 
-                        name={expandedId === item.id ? "chevron-up" : "chevron-down"} 
-                        size={20} 
-                        color={theme.subText} 
-                      />
-                    </TouchableOpacity>
-                    
-                    {expandedId === item.id && (
-                      <View style={[styles.faqContent, { borderTopWidth: 0.5, borderTopColor: theme.inputBorder }]}>
-                        <Text style={[styles.faqText, { color: theme.text }]}>{item.content}</Text>
-                      </View>
-                    )}
-                  </View>
-                ))}
+          renderItem={({ item }) => (
+            <View style={[styles.chatBubbleRow, item.isBot ? { justifyContent: 'flex-start' } : { justifyContent: 'flex-end' }]}>
+              {item.isBot && <View style={styles.botAvatar}><Feather name="cpu" size={12} color="#FFF" /></View>}
+              <View style={[styles.chatBubble, item.isBot ? { backgroundColor: darkMode ? '#333' : '#eee' } : { backgroundColor: isCyber ? '#FF007F' : '#111' }]}>
+                <Text style={{ color: item.isBot ? theme.text : '#FFF' }}>{item.text}</Text>
               </View>
-
-              <View style={[styles.aiSectionTitleRow, { borderTopColor: theme.inputBorder }]}>
+            </View>
+          )}
+          ListHeaderComponent={
+            <View style={{ paddingBottom: 20 }}>
+              <Text style={{ color: theme.subText, marginBottom: 20 }}>我們整理了一些最常見的問題與使用技巧！</Text>
+              {faqData.map(item => (
+                <View key={item.id} style={[styles.faqCard, { backgroundColor: theme.cardBg, borderColor: theme.inputBorder }]}>
+                  <TouchableOpacity style={styles.faqHeader} onPress={() => setExpandedId(expandedId === item.id ? null : item.id)}>
+                    <Text style={{ color: theme.text, fontWeight: '700' }}>{item.title}</Text>
+                    <Feather name={expandedId === item.id ? "chevron-up" : "chevron-down"} size={20} color={theme.subText} />
+                  </TouchableOpacity>
+                  {expandedId === item.id && <Text style={{ padding: 15, paddingTop: 0, color: theme.text }}>{item.content}</Text>}
+                </View>
+              ))}
+              <View style={styles.aiSectionTitleRow}>
                 <Feather name="message-circle" size={16} color={theme.text} style={{ marginRight: 8 }} />
-                <Text style={[styles.aiSectionTitleText, { color: theme.text }]}>APP說明書小精靈</Text>
+                <Text style={{ color: theme.text, fontWeight: 'bold' }}>AI 說明小精靈</Text>
               </View>
             </View>
           }
-          ListFooterComponent={
-            isAiThinking ? (
-              <View style={styles.thinkingWrapper}>
-                <ActivityIndicator size="small" color={theme.text} />
-                <Text style={{ fontSize: 12, color: theme.subText, marginLeft: 8 }}>精靈正在翻閱說明手冊...</Text>
-              </View>
-            ) : null
-          }
+          ListFooterComponent={isAiThinking ? <ActivityIndicator style={{ margin: 10 }} color={theme.text} /> : null}
         />
 
-        <View style={[styles.chatInputRow, { borderTopColor: darkMode ? '#2C2C2E' : '#E5E5EA', backgroundColor: theme.bg }]}>
+        <View style={[styles.inputContainer, { backgroundColor: theme.bg, borderTopColor: theme.inputBorder }]}>
           <TextInput
-            style={[styles.chatTextInput, { color: theme.text, backgroundColor: darkMode ? '#1E1E1E' : '#F5F5F7', borderColor: theme.inputBorder }]}
-            placeholder="請輸入你遇到的軟體使用疑惑..."
-            placeholderTextColor={darkMode ? '#555555' : '#999999'}
+            style={[styles.chatTextInput, { color: theme.text, borderColor: theme.inputBorder, backgroundColor: darkMode ? '#1E1E1E' : '#F5F5F7' }]}
+            placeholder="詢問小精靈..."
+            placeholderTextColor={darkMode ? '#555' : '#999'}
             value={chatInput}
             onChangeText={setChatInput}
             onSubmitEditing={handleSendChatMessage}
           />
-          <TouchableOpacity 
-            style={[styles.chatSendBtn, { backgroundColor: chatInput.trim() ? (isCyber ? '#FF007F' : (darkMode ? '#FFFFFF' : '#111111')) : '#CCCCCC' }]}
-            disabled={!chatInput.trim()}
-            onPress={handleSendChatMessage}
-          >
-            <Feather name="send" size={16} color={isCyber ? '#FFFF00' : (darkMode ? '#000000' : '#FFFFFF')} />
+          <TouchableOpacity onPress={handleSendChatMessage} style={styles.sendBtn}>
+            <Feather name="send" size={18} color="#FFF" />
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -262,51 +197,15 @@ export default function TutorialScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 15,
-    height: 60,
-  },
-  backBtn: { padding: 5 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 15, height: 60, borderBottomWidth: 1 },
   headerTitle: { fontSize: 18, fontWeight: 'bold' },
-  scrollContent: { padding: 20 },
-  introText: { fontSize: 14, marginBottom: 20, lineHeight: 22, fontWeight: '500' },
-  
-  faqCard: {
-    borderWidth: 1,
-    borderRadius: 16,
-    marginBottom: 12,
-    overflow: 'hidden',
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  faqHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-  },
-  faqTitle: { fontSize: 15, fontWeight: '700' },
-  faqContent: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-    paddingTop: 12,
-  },
-  faqText: { fontSize: 14, lineHeight: 22 },
-
-  aiSectionTitleRow: { flexDirection: 'row', alignItems: 'center', paddingTop: 20, borderTopWidth: 0.5, marginBottom: 15 },
-  aiSectionTitleText: { fontSize: 15, fontWeight: 'bold' },
-
-  chatBubbleRow: { flexDirection: 'row', alignItems: 'flex-start', marginVertical: 6, width: '100%' },
-  botAvatarCircle: { width: 26, height: 26, borderRadius: 13, justifyContent: 'center', alignItems: 'center', marginRight: 10, marginTop: 4 },
-  chatBubble: { maxWidth: '75%', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 16 },
-  chatBubbleText: { fontSize: 14, lineHeight: 20 },
-  thinkingWrapper: { flexDirection: 'row', alignItems: 'center', paddingLeft: 36, paddingVertical: 5 },
-
-  chatInputRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, paddingVertical: 12, borderTopWidth: 1 },
-  chatTextInput: { flex: 1, height: 40, borderRadius: 20, paddingHorizontal: 16, fontSize: 14, borderWidth: 1 },
-  chatSendBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginLeft: 10 },
+  faqCard: { marginBottom: 10, borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
+  faqHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15 },
+  aiSectionTitleRow: { flexDirection: 'row', alignItems: 'center', paddingTop: 20 },
+  chatBubbleRow: { flexDirection: 'row', alignItems: 'flex-end', marginVertical: 6 },
+  botAvatar: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#666', justifyContent: 'center', alignItems: 'center', marginRight: 8 },
+  chatBubble: { maxWidth: '70%', padding: 12, borderRadius: 15 },
+  inputContainer: { flexDirection: 'row', padding: 15, borderTopWidth: 1, alignItems: 'center' },
+  chatTextInput: { flex: 1, height: 45, borderRadius: 22, paddingHorizontal: 15, borderWidth: 1 },
+  sendBtn: { width: 45, height: 45, borderRadius: 22, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center', marginLeft: 10 }
 });
