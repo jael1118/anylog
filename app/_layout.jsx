@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, TouchableOpacity, StyleSheet, Dimensions, Image } from 'react-native';
 import { Stack, usePathname, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { Video, ResizeMode } from 'expo-av';
@@ -8,15 +8,37 @@ import * as SplashScreen from 'expo-splash-screen';
 // 🌟 引入全域主題設定
 import { ThemeProvider, useAppTheme } from './ThemeContext';
 
+const THEME_VIDEOS = {
+  light: require('../assets/icon_light.mp4'),
+  dark: require('../assets/icon_dark.mp4'),
+  transparent: require('../assets/transparent.gif'),
+};
+
 // 防止系統預設的靜態閃屏自動消失
 SplashScreen.preventAutoHideAsync();
 
 // 🌟 新增一個內部元件，用來讀取與響應全域主題色，讓底下的導覽列也能同步變深色！
-function MainAppContent({ pathname, router, isVideoFinished, handlePlaybackStatusUpdate, showNavBar }) {
+function MainAppContent({ pathname, router, isVideoFinished, handlePlaybackStatusUpdate, showNavBar, setIsVideoFinished }) {
   // 這裡就能安全使用 useAppTheme 了，因為此元件已經在 ThemeProvider 的裡面
   const { theme } = useAppTheme();
   const darkMode = theme.darkMode;
 
+  const currentThemeId = theme.id || (darkMode ? 'dark' : 'light'); 
+  const isLightTheme = theme.id === 'light' || theme.name === 'light' || (!theme.darkMode && (theme.bg === '#FFFFFF' || theme.bg === '#FAFAFA'));
+  // 🌟 2. 查表取得對應影片，並加上防呆機制（萬一找不到，就預設播淺色版）
+  const isUsingMp4 = isLightTheme;
+  useEffect(() => {
+    // 如果是用 GIF，而且還沒播放完，就啟動 3 秒倒數
+    if (!isUsingMp4 && !isVideoFinished) {
+      SplashScreen.hideAsync();
+      const timer = setTimeout(() => {
+        
+        setIsVideoFinished(true); // 時間到，強制收起遮罩
+      }, 3000); // ⏳ 這裡的 3000 是毫秒，請依據你的 GIF 長度調整
+      
+      return () => clearTimeout(timer);
+    }
+  }, [isUsingMp4, isVideoFinished]);
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       {/* 1. 最底層：你的 App 畫面內容 */}
@@ -56,15 +78,24 @@ function MainAppContent({ pathname, router, isVideoFinished, handlePlaybackStatu
 
       {/* 3. 最頂層：影片動畫層 */}
       {!isVideoFinished && (
-        <View style={[styles.videoOverlay, { backgroundColor: darkMode ? '#121212' : '#ffffff' }]}>
+        <View style={[styles.videoOverlay, { backgroundColor: theme.bg }]}>
+          {isUsingMp4 ? (
           <Video
-            style={{ width: 200, height: 200 }}
-            source={require('../assets/icon.mp4')} // ⚠️ 務必確認你的影片路徑是否正確
-            resizeMode={ResizeMode.COVER}
-            shouldPlay={true}
-            isLooping={false}
-            onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
-          />
+              style={{ width: 200, height: 200 }}
+              source={THEME_VIDEOS.light} 
+              resizeMode={ResizeMode.COVER}
+              shouldPlay={true}
+              isLooping={false}
+              onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
+            />
+          ) : (
+            // 🖼️ GIF 播放器
+            <Image
+              style={{ width: 200, height: 200 }}
+              source={THEME_VIDEOS.transparent} 
+              resizeMode="contain"
+            />
+          )}
         </View>
       )}
     </View>
@@ -103,6 +134,7 @@ export default function Layout() {
         isVideoFinished={isVideoFinished}
         handlePlaybackStatusUpdate={handlePlaybackStatusUpdate}
         showNavBar={showNavBar}
+        setIsVideoFinished={setIsVideoFinished}
       />
     </ThemeProvider>
   );
