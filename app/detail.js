@@ -26,6 +26,7 @@ export default function DetailScreen() {
   // 🌟 從全域主題中撈取當前的 theme 設定
   const { theme } = useAppTheme();
   const darkMode = theme.darkMode;
+  const currentMode = theme.themeMode;
 
   const [record, setRecord] = useState(() => {
     return recordString ? JSON.parse(recordString) : null;
@@ -418,19 +419,19 @@ export default function DetailScreen() {
           <SafeAreaView>
             <View style={[styles.dropdownMenu, { backgroundColor: theme.modalBg, borderColor: theme.inputBorder }]}>
               <TouchableOpacity style={styles.menuItem} onPress={handleCopy}>
-                <Feather name="copy" size={18} color={theme.text} />
-                <Text style={[styles.menuItemText, { color: theme.text }]}>拷貝</Text>
+                <Feather name="copy" size={18} color={currentMode === 'cyber' ? '#FFFF00' : (theme.isCyber ? '#000000' : theme.subText)} />
+                <Text style={[styles.menuItemText, { color: currentMode === 'cyber' ? '#FFFF00' : (theme.isCyber ? '#000000' : theme.subText) }]}>拷貝</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.menuItem} onPress={handleShare}>
-                <Feather name="share" size={18} color={theme.text} />
-                <Text style={[styles.menuItemText, { color: theme.text }]}>分享</Text>
+                <Feather name="share" size={18} color={currentMode === 'cyber' ? '#FFFF00' : (theme.isCyber ? '#000000' : theme.subText)} />
+                <Text style={[styles.menuItemText, { color: currentMode === 'cyber' ? '#FFFF00' : (theme.isCyber ? '#000000' : theme.subText) }]}>分享</Text>
               </TouchableOpacity>
               {myUserId === authorId && (
                 <>
                   <View style={[styles.menuDivider, { backgroundColor: darkMode ? '#2C2C2E' : '#F0F0F0' }]} />
                   <TouchableOpacity style={styles.menuItem} onPress={handleDelete}>
-                    <Feather name="trash-2" size={18} color="#FF3B30" />
-                    <Text style={[styles.menuItemText, { color: '#FF3B30' }]}>刪除</Text>
+                    <Feather name="trash-2" size={18} color={currentMode === 'cyber' ? '#FFFF00' : (theme.isCyber ? '#000000' : theme.subText)} />
+                    <Text style={[styles.menuItemText, { color: currentMode === 'cyber' ? '#FFFF00' : (theme.isCyber ? '#000000' : theme.subText) }]}>刪除</Text>
                   </TouchableOpacity>
                 </>
               )}

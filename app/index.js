@@ -19,6 +19,7 @@ export default function SpaceListScreen() {
   // 🌟 從全域主題中撈取當前的 theme 設定
   const { theme } = useAppTheme();
   const darkMode = theme.darkMode;
+  const currentMode = theme.themeMode;
 
   const [myUserId, setMyUserId] = useState(null);
   const [spaces, setSpaces] = useState([]);
@@ -258,9 +259,9 @@ export default function SpaceListScreen() {
                 <View>
                   <View style={styles.modalHeader}>
                     <View style={{ width: 24 }} /> 
-                    <Text style={[styles.modalTitle, { color: theme.text, marginBottom: 0 }]}>新增或加入</Text>
+                    <Text style={[styles.modalTitle, { color: currentMode === 'cyber' ? '#FFFF00' : (theme.isCyber ? '#000000' : theme.subText), marginBottom: 0 }]}>新增或加入</Text>
                     <TouchableOpacity onPress={() => setIsAddModalVisible(false)}>
-                      <Feather name="x" size={24} color={theme.text} />
+                      <Feather name="x" size={24} color={currentMode === 'cyber' ? '#FFFF00' : (theme.isCyber ? '#000000' : theme.subText)} />
                     </TouchableOpacity>
                   </View>
 

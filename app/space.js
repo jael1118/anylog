@@ -30,6 +30,7 @@ export default function App() {
   // 🌟 從全域主題中撈取當前的 theme 設定
   const { theme } = useAppTheme();
   const darkMode = theme.darkMode;
+  const currentMode = theme.themeMode;
 
   const [memberProfiles, setMemberProfiles] = useState([]);
   const [isMembersModalVisible, setIsMembersModalVisible] = useState(false);
@@ -430,8 +431,8 @@ export default function App() {
                 setIsEditNameModalVisible(true); 
               }}
             >
-              <Feather name="edit-2" size={18} color={theme.text} />
-              <Text style={[styles.menuItemText, { color: theme.text }]}>更改名稱</Text>
+              <Feather name="edit-2" size={18} color={currentMode === 'cyber' ? '#FFFF00' : (theme.isCyber ? '#000000' : theme.subText)} />
+              <Text style={[styles.menuItemText, { color: currentMode === 'cyber' ? '#FFFF00' : (theme.isCyber ? '#000000' : theme.subText) }]}>更改名稱</Text>
             </TouchableOpacity>
             
             <View style={[styles.menuDivider, { backgroundColor: darkMode ? '#2C2C2E' : '#F0F0F0' }]} />
@@ -443,8 +444,8 @@ export default function App() {
                 handleSelectBackground(); 
               }}
             >
-              <Feather name="image" size={18} color={theme.text} />
-              <Text style={[styles.menuItemText, { color: theme.text }]}>更換背景</Text>
+              <Feather name="image" size={18} color={currentMode === 'cyber' ? '#FFFF00' : (theme.isCyber ? '#000000' : theme.subText)} />
+              <Text style={[styles.menuItemText, { color: currentMode === 'cyber' ? '#FFFF00' : (theme.isCyber ? '#000000' : theme.subText) }]}>更換背景</Text>
             </TouchableOpacity>
           </View>
         </View>
