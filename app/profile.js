@@ -416,7 +416,7 @@ export default function ProfileScreen() {
               style={styles.modalCloseCornerBtn} 
               onPress={() => setIsPreviewMoodVisible(false)}
             >
-              <Feather name="x" size={20} color={theme.text} />
+              <Feather name="x" size={20} color={currentMode === 'cyber' ? '#FFFF00' : (theme.isCyber ? '#000000' : theme.subText)} />
             </TouchableOpacity>
 
             <View style={{ alignItems: 'center', width: '100%' }}>

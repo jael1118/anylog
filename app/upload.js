@@ -39,7 +39,7 @@ export default function UploadScreen() {
   const [myUserId, setMyUserId] = useState(null);
   const [mySpaces, setMySpaces] = useState([]);
   
-  const [uploadTargetSpaceId, setUploadTargetSpaceId] = useState(currentSpaceId || null);
+  const [uploadTargetSpaceIds, setUploadTargetSpaceIds] = useState(currentSpaceId ? [currentSpaceId] : []);
   const [selectedImages, setSelectedImages] = useState([]);
   const [selectedImagesBase64, setSelectedImagesBase64] = useState([]);
   const [notes, setNotes] = useState(['']); 
@@ -96,7 +96,7 @@ export default function UploadScreen() {
 
   useEffect(() => {
     if (editRecord) {
-      setUploadTargetSpaceId(editRecord.spaceId || currentSpaceId);
+      setUploadTargetSpaceIds([editRecord.spaceId || currentSpaceId]);
       setLocation(editRecord.location || '');
       setLatitude(editRecord.latitude || null);
       setLongitude(editRecord.longitude || null);
@@ -124,12 +124,32 @@ export default function UploadScreen() {
     if (!myUserId) return;
     const unsubscribe = subscribeToUserSpaces(myUserId, (spaces) => {
       setMySpaces(spaces);
-      if (!uploadTargetSpaceId && spaces.length > 0) {
-        setUploadTargetSpaceId(spaces[0].id);
-      }
+      setUploadTargetSpaceIds(prev => {
+        const currentArray = Array.isArray(prev) ? prev : (prev ? [prev] : []);
+        if (currentArray.length === 0 && spaces.length > 0) {
+          return [spaces[0].id];
+        }
+        return currentArray;
+      });
     });
     return () => unsubscribe();
   }, [myUserId]);
+
+  const toggleSpaceSelection = (id) => {
+    if (editRecord) {
+      Alert.alert("提示", "編輯模式下無法更改或多選發佈空間喔！");
+      return;
+    }
+    setUploadTargetSpaceIds(prev => {
+      const currentArray = Array.isArray(prev) ? prev : (prev ? [prev] : []);
+      
+      if (currentArray.includes(id)) {
+        return currentArray.filter(spaceId => spaceId !== id); // 已選就取消
+      } else {
+        return [...currentArray, id]; // 未選就加入
+      }
+    });
+  };
 
   const pickImage = async () => {
     let result = await ImagePicker.launchImageLibraryAsync({
@@ -230,8 +250,8 @@ export default function UploadScreen() {
   };
 
   const handleUpload = async () => {
-    if (!hasContent || !uploadTargetSpaceId) {
-      Alert.alert("提示", "請輸入文字或選擇照片再發佈喔！");
+    if (!hasContent || uploadTargetSpaceIds.length === 0) {
+      Alert.alert("提示", "請選擇空間再發佈喔！");
       return;
     }
     
@@ -255,74 +275,63 @@ export default function UploadScreen() {
       }
       
       const combinedNote = notes.filter(n => n.trim() !== '').join('\n');
-      let currentRecordId = editRecord ? editRecord.id : null;
       
+      // 🌟 提前抓取使用者資料，準備發通知用
+      let userName = '神祕成員';
+      let userAvatar = null;
+      try {
+        const profile = await getUserProfile(myUserId);
+        if (profile) {
+          userName = profile.name || userName;
+          userAvatar = profile.avatarUrl || userAvatar;
+        }
+      } catch (pError) {
+        console.log("發送通知前抓取個人檔案失敗:", pError);
+      }
+
       if (editRecord) {
-        await updateRecordInSpace(uploadTargetSpaceId, editRecord.id, cloudImageUrls, combinedNote, location, latitude, longitude, selectedMood);
+        // 【編輯模式】：只針對單一空間更新
+        const targetSpaceId = uploadTargetSpaceIds[0];
+        await updateRecordInSpace(targetSpaceId, editRecord.id, cloudImageUrls, combinedNote, location, latitude, longitude, selectedMood);
+        
+        const targetSpace = mySpaces.find(s => s.id === targetSpaceId);
+        if (targetSpace && targetSpace.members && targetSpace.members.length > 0) {
+          const fakeRecordDataForDetail = {
+             id: editRecord.id, spaceId: targetSpaceId, userId: myUserId, imageUrls: cloudImageUrls, note: combinedNote, location: location, latitude: latitude, longitude: longitude, mood: selectedMood !== undefined ? selectedMood : null, createdAt: Date.now()
+          };
+          await sendNotificationToMembers(targetSpace.members, myUserId, {
+            userName: userName, userAvatar: userAvatar, spaceName: targetSpace.name, action: '更新了一篇舊紀錄 📝', recordData: JSON.stringify(fakeRecordDataForDetail) 
+          });
+        }
       } else {
+        // 【新增模式】：迴圈發佈到所有選取的空間
         const { collection, addDoc } = require('firebase/firestore');
         const { db } = require('./firebaseConfig');
+        const actionText = selectedImages.length > 0 ? '上傳了一篇新紀錄 📸' : '發表了一則新動態 ✍️';
         
-        const newRecordRef = await addDoc(collection(db, "Records"), {
-          spaceId: uploadTargetSpaceId,
-          userId: myUserId || null, 
-          imageUrls: cloudImageUrls, 
-          note: combinedNote || "",
-          location: location || "",
-          latitude: latitude !== undefined ? latitude : null,   
-          longitude: longitude !== undefined ? longitude : null, 
-          mood: selectedMood !== undefined ? selectedMood : null,
-          createdAt: Date.now()
-        });
-        currentRecordId = newRecordRef.id;
-      }
-      
-      const targetSpace = mySpaces.find(s => s.id === uploadTargetSpaceId);
-      if (targetSpace && targetSpace.members && targetSpace.members.length > 0) {
-        let userName = '神祕成員';
-        let userAvatar = null;
-        
-        try {
-          const profile = await getUserProfile(myUserId);
-          if (profile) {
-            userName = profile.name || userName;
-            userAvatar = profile.avatarUrl || userAvatar;
+        for (const spaceId of uploadTargetSpaceIds) {
+          const newRecordRef = await addDoc(collection(db, "Records"), {
+            spaceId: spaceId,
+            userId: myUserId || null, 
+            imageUrls: cloudImageUrls, 
+            note: combinedNote || "",
+            location: location || "",
+            latitude: latitude !== undefined ? latitude : null,   
+            longitude: longitude !== undefined ? longitude : null, 
+            mood: selectedMood !== undefined ? selectedMood : null,
+            createdAt: Date.now()
+          });
+
+          const targetSpace = mySpaces.find(s => s.id === spaceId);
+          if (targetSpace && targetSpace.members && targetSpace.members.length > 0) {
+            const fakeRecordDataForDetail = {
+               id: newRecordRef.id, spaceId: spaceId, userId: myUserId, imageUrls: cloudImageUrls, note: combinedNote, location: location, latitude: latitude, longitude: longitude, mood: selectedMood !== undefined ? selectedMood : null, createdAt: Date.now()
+            };
+            await sendNotificationToMembers(targetSpace.members, myUserId, {
+              userName: userName, userAvatar: userAvatar, spaceName: targetSpace.name, action: actionText, recordData: JSON.stringify(fakeRecordDataForDetail) 
+            });
           }
-        } catch (pError) {
-          console.log("發送通知前抓取個人檔案失敗:", pError);
         }
-
-        let actionText = '';
-        if (editRecord) {
-          actionText = '更新了一篇舊紀錄 📝';
-        } else {
-          actionText = selectedImages.length > 0 ? '上傳了一篇新紀錄 📸' : '發表了一則新動態 ✍️';
-        }
-
-        const fakeRecordDataForDetail = {
-           id: currentRecordId,
-           spaceId: uploadTargetSpaceId,
-           userId: myUserId,
-           imageUrls: cloudImageUrls,
-           note: combinedNote,
-           location: location,
-           latitude: latitude,
-           longitude: longitude,
-           mood: selectedMood !== undefined ? selectedMood : null,
-           createdAt: Date.now()
-        };
-
-        await sendNotificationToMembers(
-          targetSpace.members, 
-          myUserId, 
-          {
-            userName: userName,
-            userAvatar: userAvatar,
-            spaceName: targetSpace.name,
-            action: actionText,
-            recordData: JSON.stringify(fakeRecordDataForDetail) 
-          }
-        );
       }
 
       Alert.alert("成功", editRecord ? "紀錄已更新！" : "紀錄已發佈！", [
@@ -413,7 +422,7 @@ export default function UploadScreen() {
                 keyExtractor={(item, index) => index.toString()}
               />
               <TouchableOpacity style={styles.floatingReselectBtn} onPress={pickImage} disabled={isUploading}>
-                <Feather name="refresh-cw" size={16} color="#FFF" />
+                <Feather name="image" size={16} color="#FFF" />
               </TouchableOpacity>
             </View>
 
@@ -489,6 +498,10 @@ export default function UploadScreen() {
                 placeholderTextColor={darkMode ? "#444" : "#999"}
                 value={noteText}
                 onChangeText={(text) => handleNoteChange(text, index)}
+                // 🌟 加碼這兩行：讓長句子可以自然往下換行，不會跑到螢幕外面！
+                multiline={true} 
+                scrollEnabled={false}
+                
                 onSubmitEditing={() => handleNoteSubmit(index)} 
                 onKeyPress={(e) => handleNoteKeyPress(e, index)} 
                 blurOnSubmit={false} 
@@ -500,22 +513,28 @@ export default function UploadScreen() {
 
           <Text style={[styles.sectionTitle, { color: theme.subText }]}>發佈至空間：</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.spaceSelector}>
-            {mySpaces.map(space => (
-              <TouchableOpacity 
-                key={space.id}
-                style={[
-                  styles.spaceChip, 
-                  { borderColor: darkMode ? '#333' : '#E0E0E0', backgroundColor: darkMode ? '#1E1E1E' : 'transparent' },
-                  uploadTargetSpaceId === space.id && (darkMode ? styles.spaceChipActiveDark : styles.spaceChipActive)
-                ]}
-                onPress={() => setUploadTargetSpaceId(space.id)}
-                disabled={isUploading}
-              >
-                <Text style={[styles.spaceChipText, { color: theme.subText }, uploadTargetSpaceId === space.id && { color: darkMode ? '#000' : '#FFF' }]}>
-                  {space.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            {mySpaces.map(space => {
+              // 🌟 判斷此空間是否在陣列中
+              const isSelected = uploadTargetSpaceIds.includes(space.id);
+              
+              return (
+                <TouchableOpacity 
+                  key={space.id}
+                  style={[
+                    styles.spaceChip, 
+                    { borderColor: darkMode ? '#333' : '#E0E0E0', backgroundColor: darkMode ? '#1E1E1E' : 'transparent' },
+                    isSelected && (darkMode ? styles.spaceChipActiveDark : styles.spaceChipActive)
+                  ]}
+                  // 🌟 點擊觸發多選函式
+                  onPress={() => toggleSpaceSelection(space.id)}
+                  disabled={isUploading || editRecord !== null} 
+                >
+                  <Text style={[styles.spaceChipText, { color: theme.subText }, isSelected && { color: darkMode ? '#000' : '#FFF' }]}>
+                    {space.name}
+                  </Text>
+                </TouchableOpacity>
+              )
+            })}
           </ScrollView>
           <View style={{ height: 60 }} />
         </View>
@@ -646,7 +665,7 @@ const styles = StyleSheet.create({
   locationRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, marginBottom: 15 },
   locationTextDisplay: { flex: 1, fontSize: 16, marginLeft: 12 },
   inputContainer: { marginBottom: 30, borderBottomWidth: 1, paddingBottom: 10 },
-  dynamicTextInput: { fontSize: 16, lineHeight: 28, minHeight: 28, textAlignVertical: 'center', marginBottom: 2 },
+  dynamicTextInput: { fontSize: 16, minHeight: 28, paddingVertical: 8, marginBottom: 2 },
   sectionTitle: { fontSize: 14, marginBottom: 10, fontWeight: '500' },
   spaceSelector: { flexDirection: 'row' },
   spaceChip: { paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20, borderWidth: 1, marginRight: 10 },
