@@ -110,7 +110,7 @@ export default function TutorialScreen() {
         },
         { 
           headers: { 
-            'Authorization': 'Bearer YOUR_GROQ_API', 
+            'Authorization': 'Bearer ', 
             'Content-Type': 'application/json' 
           } 
         }

@@ -101,7 +101,7 @@ export default function UploadScreen() {
       setLatitude(editRecord.latitude || null);
       setLongitude(editRecord.longitude || null);
       setSelectedPoiName(editRecord.location || null);
-      
+      setSelectedMood(editRecord.mood !== undefined ? editRecord.mood : null);
       if (editRecord.note) {
         setNotes([...editRecord.note.split('\n'), '']);
       }

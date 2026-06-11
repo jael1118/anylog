@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { Feather } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage'; 
 
 import { 
@@ -27,9 +27,9 @@ export default function DetailScreen() {
   const { theme } = useAppTheme();
   const darkMode = theme.darkMode;
 
-  const record = useMemo(() => {
+  const [record, setRecord] = useState(() => {
     return recordString ? JSON.parse(recordString) : null;
-  }, [recordString]);
+  });
 
   const [activeIndex, setActiveIndex] = useState(0);
   const [isMenuVisible, setIsMenuVisible] = useState(false);
@@ -44,6 +44,31 @@ export default function DetailScreen() {
   const [userProfiles, setUserProfiles] = useState({}); 
   const fetchedUidsRef = useRef(new Set());
 
+  // 🌟 只要畫面重新出現，就去資料庫抓最新版本的這篇文章
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!record?.id) return;
+
+      const fetchUpdatedRecord = async () => {
+        try {
+          const { doc, getDoc } = require('firebase/firestore');
+          const { db } = require('./firebaseConfig');
+          
+          const docRef = doc(db, "Records", record.id);
+          const docSnap = await getDoc(docRef);
+          
+          if (docSnap.exists()) {
+            setRecord({ id: docSnap.id, ...docSnap.data() }); // 覆蓋成最新資料
+          }
+        } catch (error) {
+          console.log("刷新紀錄失敗:", error);
+        }
+      };
+
+      fetchUpdatedRecord();
+    }, [record?.id])
+  );
+  
   if (!record) return null;
   const images = record.imageUrls || (record.imageUrl ? [record.imageUrl] : []);
   const tags = record?.tags || []; 
