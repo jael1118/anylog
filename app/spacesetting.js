@@ -129,7 +129,7 @@ export default function SpaceSettingsScreen() {
       { text: "取消", style: "cancel" },
       { text: "退出", style: "destructive", onPress: async () => {
           await removeMemberFromSpace(spaceId, myUserId);
-          router.replace('/'); // 退回首頁
+          router.back(); // 退回首頁
       }}
     ]);
   };

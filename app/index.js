@@ -231,7 +231,7 @@ export default function SpaceListScreen() {
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Text style={[styles.emptyStateText, { color: theme.valueText }]}>Currently, there are no spaces. Create one now!</Text>
+            <Text style={[styles.emptyStateText, { color: theme.valueText }]}>目前沒有空間，建立一個吧!</Text>
           </View>
         }
       />
